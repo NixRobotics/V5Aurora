@@ -178,9 +178,9 @@ CLAW_DOWN_REVS = 0.0
 CLAW_DOWN = 0
 CLAW_MID = 1
 CLAW_UP = 2
-CLAW_POSITION = 0 # 0 = down, 1 = mid, 2 = up
+CLAW_POSITION = CLAW_DOWN  # 0 = down, 1 = mid, 2 = up
 CLAW_TIMEOUT = 2.0
-CLAW_SPEED = 100
+CLAW_SPEED = 75
 
 def raise_claw():
     global CLAW_RUNNING, CLAW_POSITION
@@ -370,6 +370,8 @@ def user_control():
 
     brain.screen.clear_screen()
     brain.screen.print("user control")
+
+    controller_1.buttonA.pressed(OnControlButtonAPressed)
 
     controller_1.buttonR2.pressed(OnControlButtonR2Pressed)
     controller_1.buttonR1.pressed(OnControlButtonR1Pressed)
