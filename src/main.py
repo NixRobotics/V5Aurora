@@ -79,7 +79,7 @@ def autonomous():
 
 LIFT_RUNNING = False
 LIFT_HOLDING = False
-LIFT_LINKS = 24
+LIFT_LINKS = 30
 LIFT_TEETH = 6
 LIFT_DEGREES_PER_LINK = 360 / LIFT_TEETH
 lift_thread = None
@@ -176,7 +176,7 @@ CLAW_UP_REVS = 1.25
 CLAW_MID2_REVS = 0.35 
 CLAW_MID1_REVS = 0.20
 CLAW_DOWN_REVS = 0.0
-lift_links = 24
+lift_links = 30
 CLAW_DOWN = 0
 CLAW_MID1 = 1
 CLAW_MID2 = 2
