@@ -173,23 +173,29 @@ def OnControlButtonR1Pressed():
 
 CLAW_RUNNING = False
 CLAW_UP_REVS = 1.25
-CLAW_MID_REVS = 0.25
+CLAW_MID2_REVS = 0.35 
+CLAW_MID1_REVS = 0.20
 CLAW_DOWN_REVS = 0.0
+lift_links = 24
 CLAW_DOWN = 0
-CLAW_MID = 1
-CLAW_UP = 2
-CLAW_POSITION = CLAW_DOWN  # 0 = down, 1 = mid, 2 = up
-CLAW_TIMEOUT = 2.0
-CLAW_SPEED = 75
+CLAW_MID1 = 1
+CLAW_MID2 = 2
+CLAW_UP = 3
+CLAW_POSITION = CLAW_DOWN  # 0 = down, 1 = mid1, 2 = mid2, 3 = up
+CLAW_TIMEOUT = 1.0
+CLAW_SPEED = 50
 
 def raise_claw():
     global CLAW_RUNNING, CLAW_POSITION
     if CLAW_RUNNING: return
 
     if CLAW_POSITION == CLAW_DOWN:
-        claw_target_position = CLAW_MID
-        claw_target_revs = CLAW_MID_REVS
-    elif CLAW_POSITION == CLAW_MID:
+        claw_target_position = CLAW_MID1
+        claw_target_revs = CLAW_MID1_REVS
+    elif CLAW_POSITION == CLAW_MID1:
+        claw_target_position = CLAW_MID2
+        claw_target_revs = CLAW_MID2_REVS
+    elif CLAW_POSITION == CLAW_MID2:
         claw_target_position = CLAW_UP
         claw_target_revs = CLAW_UP_REVS
     else: return
@@ -217,9 +223,12 @@ def lower_claw():
     if CLAW_RUNNING: return
 
     if CLAW_POSITION == CLAW_UP:
-        claw_target_position = CLAW_MID
-        claw_target_revs = CLAW_MID_REVS
-    elif CLAW_POSITION == CLAW_MID:
+        claw_target_position = CLAW_MID2
+        claw_target_revs = CLAW_MID2_REVS
+    elif CLAW_POSITION == CLAW_MID2:
+        claw_target_position = CLAW_MID1
+        claw_target_revs = CLAW_MID1_REVS
+    elif CLAW_POSITION == CLAW_MID1:
         claw_target_position = CLAW_DOWN
         claw_target_revs = CLAW_DOWN_REVS
     else: return
@@ -365,6 +374,11 @@ AUTO_FORWARD_KP = 5.0
 NO_INPUT_TIMEOUT = 200
 
 def user_control():
+
+    brain.screen.clear_screen()
+    brain.screen.print("driver control")
+    # place driver control in this while loop
+    last_fwd = 0 
     while not ROBOT_INITIALIZED:
         wait(100, MSEC)
 
