@@ -63,6 +63,49 @@ def pre_autonomous():
     
     ROBOT_INITIALIZED = True
 
+def drive_for(distance, speed=100): # distance is in mm, speed is in percent
+    # setup
+    effective_wheel_size = 220 / 2
+    max_voltage = 12.0
+    target_voltage = (speed / 100.0) * max_voltage
+    target_revs = distance / effective_wheel_size
+    target_tolerance = 10 / effective_wheel_size
+    drive_kp = 1.0  # Proportional gain for drive control
+
+    # save initial motor positions
+    starting_left_front_position = left_front_motor.position(TURNS)
+    starting_left_back_position = left_back_motor.position(TURNS)
+    starting_right_front_position = right_front_motor.position(TURNS)
+    starting_right_back_position = right_back_motor.position(TURNS)
+
+    done = False
+    while not done:
+        current_left_front_position = left_front_motor.position(TURNS)
+        current_left_back_position = left_back_motor.position(TURNS)
+        current_right_front_position = right_front_motor.position(TURNS)
+        current_right_back_position = right_back_motor.position(TURNS)
+
+        left_front_delta = current_left_front_position - starting_left_front_position
+        left_back_delta = current_left_back_position - starting_left_back_position
+        right_front_delta = current_right_front_position - starting_right_front_position
+        right_back_delta = current_right_back_position - starting_right_back_position
+
+        left_error = target_revs - (left_front_delta + left_back_delta) / 2.0
+        right_error = target_revs - (right_front_delta + right_back_delta) / 2.0
+
+        if abs(left_error) < target_tolerance and abs(right_error) < target_tolerance:
+            done = True
+            left_front_motor.stop(COAST)
+            left_back_motor.stop(COAST)
+            right_front_motor.stop(COAST)
+            right_back_motor.stop(COAST)
+        else:
+            left_control_voltage = drive_kp * left_error
+            right_control_voltage = drive_kp * right_error
+
+        wait(20, MSEC)
+
+
 def autonomous():
     while not ROBOT_INITIALIZED:
         wait(100, MSEC)
