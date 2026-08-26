@@ -21,16 +21,15 @@ from math import radians, cos, sin
 
 from vex import *
 
+from v5pythonlibrary import *
+
 # Brain should be defined by default
 brain=Brain()
 
 # Robot configuration code
 claw_arm_motor1 = Motor(Ports.PORT19, GearSetting.RATIO_18_1, False)
 claw_arm_motor2 = Motor(Ports.PORT11, GearSetting.RATIO_18_1, True)
-if False:
-    lift_motor = Motor(Ports.PORT10, GearSetting.RATIO_18_1, True)
-else:
-    lift_motor = Motor(Ports.PORT10, GearSetting.RATIO_18_1, False)
+lift_motor = Motor(Ports.PORT10, GearSetting.RATIO_18_1, False)
 controller_1 = Controller(PRIMARY)
 
 left_front_motor = Motor(Ports.PORT1, GearSetting.RATIO_18_1, True)
@@ -38,7 +37,7 @@ left_back_motor = Motor(Ports.PORT13, GearSetting.RATIO_18_1, True)
 right_front_motor = Motor(Ports.PORT3, GearSetting.RATIO_18_1, False)
 right_back_motor = Motor(Ports.PORT12, GearSetting.RATIO_18_1, False)
 
-inertial = Inertial(Ports.PORT5)
+inertial = InertialWrapper(Ports.PORT5, 1.0)
 
 claw_solenoid = DigitalOut(brain.three_wire_port.a)
 
