@@ -25,24 +25,18 @@ from vex import *
 brain=Brain()
 
 # Robot configuration code
-claw_motor1 = Motor(Ports.PORT19, GearSetting.RATIO_18_1, False)
-claw_motor2 = Motor(Ports.PORT11, GearSetting.RATIO_18_1, True)
+claw_arm_motor1 = Motor(Ports.PORT19, GearSetting.RATIO_18_1, False)
+claw_arm_motor2 = Motor(Ports.PORT11, GearSetting.RATIO_18_1, True)
 if False:
     lift_motor = Motor(Ports.PORT10, GearSetting.RATIO_18_1, True)
 else:
     lift_motor = Motor(Ports.PORT10, GearSetting.RATIO_18_1, False)
 controller_1 = Controller(PRIMARY)
 
-if False:
-    left_front_motor = Motor(Ports.PORT1, GearSetting.RATIO_18_1, False)
-    left_back_motor = Motor(Ports.PORT2, GearSetting.RATIO_18_1, False)
-    right_front_motor = Motor(Ports.PORT3, GearSetting.RATIO_18_1, True)
-    right_back_motor = Motor(Ports.PORT4, GearSetting.RATIO_18_1, True)
-else:
-    left_front_motor = Motor(Ports.PORT1, GearSetting.RATIO_18_1, True)
-    left_back_motor = Motor(Ports.PORT2, GearSetting.RATIO_18_1, True)
-    right_front_motor = Motor(Ports.PORT3, GearSetting.RATIO_18_1, False)
-    right_back_motor = Motor(Ports.PORT4, GearSetting.RATIO_18_1, False)
+left_front_motor = Motor(Ports.PORT1, GearSetting.RATIO_18_1, True)
+left_back_motor = Motor(Ports.PORT13, GearSetting.RATIO_18_1, True)
+right_front_motor = Motor(Ports.PORT3, GearSetting.RATIO_18_1, False)
+right_back_motor = Motor(Ports.PORT12, GearSetting.RATIO_18_1, False)
 
 inertial = Inertial(Ports.PORT5)
 
@@ -79,7 +73,7 @@ def autonomous():
 
 LIFT_RUNNING = False
 LIFT_HOLDING = False
-LIFT_LINKS = 30
+LIFT_LINKS = 31
 LIFT_TEETH = 6
 LIFT_DEGREES_PER_LINK = 360 / LIFT_TEETH
 lift_thread = None
@@ -104,7 +98,7 @@ def raise_lift():
     starting_position = lift_motor.position(DEGREES)
     lift_motor.set_velocity(100, PERCENT)
     lift_motor.set_stopping(HOLD)
-    lift_motor.set_timeout(3, SECONDS)
+    lift_motor.set_timeout(5, SECONDS)
     lift_motor.spin_to_position(LIFT_LINKS * LIFT_DEGREES_PER_LINK, DEGREES)
     lift_motor.stop()
     LIFT_RUNNING = False
@@ -122,7 +116,7 @@ def lower_lift():
     starting_position = lift_motor.position(DEGREES)
     lift_motor.set_velocity(100, PERCENT)
     lift_motor.set_stopping(HOLD)
-    lift_motor.set_timeout(3, SECONDS)
+    lift_motor.set_timeout(5, SECONDS)
     lift_motor.spin_to_position(0, DEGREES)
     lift_motor.stop(HOLD)
     LIFT_RUNNING = False
@@ -171,101 +165,115 @@ def OnControlButtonR1Pressed():
         return
     lift_thread = Thread(raise_lift)
 
-CLAW_RUNNING = False
-CLAW_UP_REVS = 1.25
-CLAW_MID2_REVS = 0.35 
-CLAW_MID1_REVS = 0.20
-CLAW_DOWN_REVS = 0.0
-lift_links = 30
-CLAW_DOWN = 0
-CLAW_MID1 = 1
-CLAW_MID2 = 2
-CLAW_UP = 3
-CLAW_POSITION = CLAW_DOWN  # 0 = down, 1 = mid1, 2 = mid2, 3 = up
-CLAW_TIMEOUT = 1.0
-CLAW_SPEED = 50
+CLAW_ARM_RUNNING = False
+CLAW_ARM_UP_DEGREES = 165 * 3
+CLAW_ARM_MID2_DEGREES = 30 * 3
+CLAW_ARM_MID1_DEGREES = 24 * 3
+CLAW_ARM_DOWN_DEGREES = 0 * 3
+CLAW_ARM_DOWN = 0
+CLAW_ARM_MID1 = 1
+CLAW_ARM_MID2 = 2
+CLAW_ARM_UP = 3
+CLAW_ARM_POSITION = CLAW_ARM_DOWN  # 0 = down, 1 = mid1, 2 = mid2, 3 = up
+CLAW_ARM_TIMEOUT = 2.0
+CLAW_ARM_SPEED = 50
 
-def raise_claw():
-    global CLAW_RUNNING, CLAW_POSITION
-    if CLAW_RUNNING: return
+def initialize_claw():
+    claw_arm_motor1.set_velocity(20, PERCENT)
+    claw_arm_motor1.set_stopping(HOLD)
+    claw_arm_motor1.set_timeout(CLAW_ARM_TIMEOUT, SECONDS)
+    claw_arm_motor2.set_velocity(20, PERCENT)
+    claw_arm_motor2.set_stopping(HOLD)
+    claw_arm_motor2.set_timeout(1, SECONDS)
+    claw_arm_motor1.spin_to_position(-20, DEGREES, wait=False)
+    claw_arm_motor2.spin_to_position(-20, DEGREES)
+    claw_arm_motor1.set_position(0, DEGREES)
+    claw_arm_motor2.set_position(0, DEGREES)
+    wait(1, SECONDS)
+    claw_arm_motor1.stop(COAST)
+    claw_arm_motor2.stop(COAST)
 
-    if CLAW_POSITION == CLAW_DOWN:
-        claw_target_position = CLAW_MID1
-        claw_target_revs = CLAW_MID1_REVS
-    elif CLAW_POSITION == CLAW_MID1:
-        claw_target_position = CLAW_MID2
-        claw_target_revs = CLAW_MID2_REVS
-    elif CLAW_POSITION == CLAW_MID2:
-        claw_target_position = CLAW_UP
-        claw_target_revs = CLAW_UP_REVS
+def raise_claw_arm():
+    global CLAW_ARM_RUNNING, CLAW_ARM_POSITION
+    if CLAW_ARM_RUNNING: return
+
+    if CLAW_ARM_POSITION == CLAW_ARM_DOWN:
+        claw_target_position = CLAW_ARM_MID1
+        claw_target_degrees = CLAW_ARM_MID1_DEGREES
+    elif CLAW_ARM_POSITION == CLAW_ARM_MID1:
+        claw_target_position = CLAW_ARM_MID2
+        claw_target_degrees = CLAW_ARM_MID2_DEGREES
+    elif CLAW_ARM_POSITION == CLAW_ARM_MID2:
+        claw_target_position = CLAW_ARM_UP
+        claw_target_degrees = CLAW_ARM_UP_DEGREES
     else: return
 
-    CLAW_RUNNING = True
-    starting_position = claw_motor1.position(DEGREES)
-    claw_motor1.set_velocity(CLAW_SPEED, PERCENT)
-    claw_motor1.set_stopping(HOLD)
-    claw_motor1.set_timeout(CLAW_TIMEOUT, SECONDS)
-    claw_motor2.set_velocity(CLAW_SPEED, PERCENT)
-    claw_motor2.set_stopping(HOLD)
-    claw_motor2.set_timeout(CLAW_TIMEOUT, SECONDS)
-    claw_motor1.spin_to_position(claw_target_revs * 360.0, DEGREES, wait=False)
-    claw_motor2.spin_to_position(claw_target_revs * 360.0, DEGREES)
-    claw_motor1.stop()
-    claw_motor2.stop()
-    CLAW_RUNNING = False
-    CLAW_POSITION = claw_target_position
-    ending_position = claw_motor1.position(DEGREES)
+    CLAW_ARM_RUNNING = True
+    starting_position = claw_arm_motor1.position(DEGREES)
+    claw_arm_motor1.set_velocity(CLAW_ARM_SPEED, PERCENT)
+    claw_arm_motor1.set_stopping(HOLD)
+    claw_arm_motor1.set_timeout(CLAW_ARM_TIMEOUT, SECONDS)
+    claw_arm_motor2.set_velocity(CLAW_ARM_SPEED, PERCENT)
+    claw_arm_motor2.set_stopping(HOLD)
+    claw_arm_motor2.set_timeout(CLAW_ARM_TIMEOUT, SECONDS)
+    claw_arm_motor1.spin_to_position(claw_target_degrees, DEGREES, wait=False)
+    claw_arm_motor2.spin_to_position(claw_target_degrees, DEGREES)
+    claw_arm_motor1.stop()
+    claw_arm_motor2.stop()
+    CLAW_ARM_RUNNING = False
+    CLAW_ARM_POSITION = claw_target_position
+    ending_position = claw_arm_motor1.position(DEGREES)
     total_links_moved = (ending_position - starting_position) / LIFT_DEGREES_PER_LINK
     print("Claw up from {} to {}, total {} links".format(starting_position, ending_position, total_links_moved))
 
-def lower_claw():
-    global CLAW_RUNNING, CLAW_POSITION
-    if CLAW_RUNNING: return
+def lower_claw_arm():
+    global CLAW_ARM_RUNNING, CLAW_ARM_POSITION
+    if CLAW_ARM_RUNNING: return
 
-    if CLAW_POSITION == CLAW_UP:
-        claw_target_position = CLAW_MID2
-        claw_target_revs = CLAW_MID2_REVS
-    elif CLAW_POSITION == CLAW_MID2:
-        claw_target_position = CLAW_MID1
-        claw_target_revs = CLAW_MID1_REVS
-    elif CLAW_POSITION == CLAW_MID1:
-        claw_target_position = CLAW_DOWN
-        claw_target_revs = CLAW_DOWN_REVS
+    if CLAW_ARM_POSITION == CLAW_ARM_UP:
+        claw_target_position = CLAW_ARM_MID2
+        claw_target_degrees = CLAW_ARM_MID2_DEGREES
+    elif CLAW_ARM_POSITION == CLAW_ARM_MID2:
+        claw_target_position = CLAW_ARM_MID1
+        claw_target_degrees = CLAW_ARM_MID1_DEGREES
+    elif CLAW_ARM_POSITION == CLAW_ARM_MID1:
+        claw_target_position = CLAW_ARM_DOWN
+        claw_target_degrees = CLAW_ARM_DOWN_DEGREES
     else: return
 
-    CLAW_RUNNING = True
-    starting_position = claw_motor1.position(DEGREES)
-    claw_motor1.set_velocity(CLAW_SPEED / 2, PERCENT)
-    claw_motor1.set_stopping(HOLD)
-    claw_motor1.set_timeout(CLAW_TIMEOUT, SECONDS)
-    claw_motor2.set_velocity(CLAW_SPEED / 2, PERCENT)
-    claw_motor2.set_stopping(HOLD)
-    claw_motor2.set_timeout(CLAW_TIMEOUT, SECONDS)
-    claw_motor1.spin_to_position(claw_target_revs * 360.0, DEGREES, wait=False)
-    claw_motor2.spin_to_position(claw_target_revs * 360.0, DEGREES)
-    claw_motor1.stop()
-    claw_motor2.stop()
-    CLAW_RUNNING = False
-    CLAW_POSITION = claw_target_position
-    ending_position = claw_motor1.position(DEGREES)
+    CLAW_ARM_RUNNING = True
+    starting_position = claw_arm_motor1.position(DEGREES)
+    claw_arm_motor1.set_velocity(CLAW_ARM_SPEED * 0.75, PERCENT)
+    claw_arm_motor1.set_stopping(HOLD)
+    claw_arm_motor1.set_timeout(CLAW_ARM_TIMEOUT, SECONDS)
+    claw_arm_motor2.set_velocity(CLAW_ARM_SPEED * 0.75, PERCENT)
+    claw_arm_motor2.set_stopping(HOLD)
+    claw_arm_motor2.set_timeout(CLAW_ARM_TIMEOUT, SECONDS)
+    claw_arm_motor1.spin_to_position(claw_target_degrees, DEGREES, wait=False)
+    claw_arm_motor2.spin_to_position(claw_target_degrees, DEGREES)
+    claw_arm_motor1.stop()
+    claw_arm_motor2.stop()
+    CLAW_ARM_RUNNING = False
+    CLAW_ARM_POSITION = claw_target_position
+    ending_position = claw_arm_motor1.position(DEGREES)
     total_links_moved = (starting_position - ending_position) / LIFT_DEGREES_PER_LINK
     print("Claw down from {} to {}, total {} links".format(starting_position, ending_position, total_links_moved))
 
 def OnControlButtonL2Pressed():
-    if CLAW_RUNNING:
+    if CLAW_ARM_RUNNING:
         print("Was Running")
-        claw_motor1.stop(HOLD)
-        claw_motor2.stop(HOLD)
+        claw_arm_motor1.stop(HOLD)
+        claw_arm_motor2.stop(HOLD)
         return
-    thread = Thread(lower_claw)
+    thread = Thread(lower_claw_arm)
 
 def OnControlButtonL1Pressed():
-    if CLAW_RUNNING:
+    if CLAW_ARM_RUNNING:
         print("Was Running")
-        claw_motor1.stop(HOLD)
-        claw_motor2.stop(HOLD)
+        claw_arm_motor1.stop(HOLD)
+        claw_arm_motor2.stop(HOLD)
         return
-    thread = Thread(raise_claw)
+    thread = Thread(raise_claw_arm)
 
 def OnControlButtonAPressed():
     if claw_solenoid.value() == 1:
@@ -411,6 +419,7 @@ def user_control():
     right_back_motor.set_stopping(COAST)
 
     # initialize_lift()
+    initialize_claw()
 
     loop_count = 0
 
