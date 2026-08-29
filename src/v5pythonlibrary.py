@@ -1139,6 +1139,12 @@ class MotorMonitor:
         '''
         pass
 
+    def mute(self, mute: bool = False):
+        '''
+        Docstring for mute
+        '''
+        pass
+
     def refresh(self):
         '''
         Docstring for refresh

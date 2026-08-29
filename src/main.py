@@ -20,6 +20,7 @@
 from math import radians, cos, sin
 
 from vex import *
+import json
 
 from v5pythonlibrary import *
 
@@ -32,86 +33,166 @@ claw_arm_motor2 = Motor(Ports.PORT11, GearSetting.RATIO_18_1, True)
 lift_motor = Motor(Ports.PORT10, GearSetting.RATIO_18_1, False)
 controller_1 = Controller(PRIMARY)
 
-left_front_motor = Motor(Ports.PORT1, GearSetting.RATIO_18_1, True)
-left_back_motor = Motor(Ports.PORT13, GearSetting.RATIO_18_1, True)
-right_front_motor = Motor(Ports.PORT3, GearSetting.RATIO_18_1, False)
-right_back_motor = Motor(Ports.PORT12, GearSetting.RATIO_18_1, False)
+left_front_motor = Motor(Ports.PORT1, GearSetting.RATIO_6_1, True)
+left_back_motor = Motor(Ports.PORT13, GearSetting.RATIO_6_1, True)
+right_front_motor = Motor(Ports.PORT3, GearSetting.RATIO_6_1, False)
+right_back_motor = Motor(Ports.PORT12, GearSetting.RATIO_6_1, False)
+DRIVETRAIN_EXTERNAL_GEAR_RATIO = 24/48
+DRIVETRAIN_WHEEL_ANGLES = 45 # deg from straight
+DRIVETRAIN_WHEEL_SIZE = 220 # mm circumference
 
 inertial = InertialWrapper(Ports.PORT5, 1.0)
+claw_distance = Distance(Ports.PORT2)
 
 claw_solenoid = DigitalOut(brain.three_wire_port.a)
 
+all_motors = [left_front_motor, left_back_motor,
+              right_front_motor, right_back_motor,
+              claw_arm_motor1, claw_arm_motor2, lift_motor]
+
+all_motor_names = ["LEFT_FRONT", "LEFT_BACK",
+                   "RIGHT_FRONT", "RIGHT_BACK",
+                   "ARM_LEFT", "ARM_RIGHT", "LIFT"]
+
+motor_monitor = None
+
 # Begin project code
-# Main Controller loop to set motors to controller axis postiions
 ROBOT_INITIALIZED = False
-pitch_offset = 0.0
+ROBOT_ENABLED = False
 
-def pre_autonomous():
-    global ROBOT_INITIALIZED
-    global pitch_offset
-    # actions to do when the program starts
+### ROBOT CONFIGURATION
+
+ENABLE_HEADING_HOLD = True
+ENABLE_AUTO_CLAW = True
+
+def save_settings():
+    print("saving settings")
+    settings = {
+        "heading_hold": ENABLE_HEADING_HOLD,
+        "auto_claw": ENABLE_AUTO_CLAW
+    }
+    print("settings to save:", settings)
+    with open("settings.json", "w") as f:
+        json.dump(settings, f)
+
+def load_settings():
+    global ENABLE_HEADING_HOLD, ENABLE_AUTO_CLAW
+    print("loading settings")
+    try:
+        with open("settings.json", "r") as f:
+            settings = json.load(f)
+            print("settings loaded:", settings)
+            ENABLE_HEADING_HOLD = settings.get("heading_hold", True)
+            ENABLE_AUTO_CLAW = settings.get("auto_claw", True)
+    except:
+        print("settings file not found, saving default settings")
+        save_settings()
+    print("heading_hold:", ENABLE_HEADING_HOLD)
+    print("auto_claw:", ENABLE_AUTO_CLAW)
+
+def configuration_UI():
+    global ROBOT_ENABLED
+    global ENABLE_HEADING_HOLD, ENABLE_AUTO_CLAW
+    ROBOT_ENABLED = False
+    if motor_monitor is not None: motor_monitor.mute(True)
+    # Use up and down arrows to select different menu items on screen
+    # Left and right arrows to change the value of the selected menu item
+    # Pressing A confirms the selected option
+    # Changes saved to SDCard and read upon next initialization
+    # Current options are:
+    # - Enable / Disable Heading Hold
+    # - Enable / Disable Auto Claw
+
     brain.screen.clear_screen()
-    brain.screen.print("pre auton code")
-    inertial.calibrate()
-    while inertial.is_calibrating():
-        wait(100, MSEC)
-    for i in range(10):
-        pitch_offset += inertial.orientation(OrientationType.ROLL, DEGREES)
-        wait(10, MSEC)
-    pitch_offset /= 10.0
-    print("Pitch offset: {:.1f}".format(pitch_offset))
-    
-    ROBOT_INITIALIZED = True
+    brain.screen.set_cursor(1, 1)
+    brain.screen.print("Robot Configuration")
+    brain.screen.new_line()
+    brain.screen.print("Use arrows to navigate")
+    brain.screen.new_line()
+    brain.screen.print("Hold A to save and exit")
+    brain.screen.new_line()
+    brain.screen.print("Press B to discard changesand exit")
+    brain.screen.new_line()
+    brain.screen.new_line()
 
-def drive_for(distance, speed=100): # distance is in mm, speed is in percent
-    # setup
-    effective_wheel_size = 220 / 2
-    max_voltage = 12.0
-    target_voltage = (speed / 100.0) * max_voltage
-    target_revs = distance / effective_wheel_size
-    target_tolerance = 10 / effective_wheel_size
-    drive_kp = 1.0  # Proportional gain for drive control
+    menu_data = [
+        {"name": "Heading Hold", "enabled": ENABLE_HEADING_HOLD},
+        {"name": "Auto Claw", "enabled": ENABLE_AUTO_CLAW}
+    ]
 
-    # save initial motor positions
-    starting_left_front_position = left_front_motor.position(TURNS)
-    starting_left_back_position = left_back_motor.position(TURNS)
-    starting_right_front_position = right_front_motor.position(TURNS)
-    starting_right_back_position = right_back_motor.position(TURNS)
+    menu_selection = 0
+    brain.screen.print("[{}] {}".format("X" if menu_data[menu_selection]["enabled"] else " ", menu_data[menu_selection]["name"]))
 
-    done = False
-    while not done:
-        current_left_front_position = left_front_motor.position(TURNS)
-        current_left_back_position = left_back_motor.position(TURNS)
-        current_right_front_position = right_front_motor.position(TURNS)
-        current_right_back_position = right_back_motor.position(TURNS)
-
-        left_front_delta = current_left_front_position - starting_left_front_position
-        left_back_delta = current_left_back_position - starting_left_back_position
-        right_front_delta = current_right_front_position - starting_right_front_position
-        right_back_delta = current_right_back_position - starting_right_back_position
-
-        left_error = target_revs - (left_front_delta + left_back_delta) / 2.0
-        right_error = target_revs - (right_front_delta + right_back_delta) / 2.0
-
-        if abs(left_error) < target_tolerance and abs(right_error) < target_tolerance:
-            done = True
-            left_front_motor.stop(COAST)
-            left_back_motor.stop(COAST)
-            right_front_motor.stop(COAST)
-            right_back_motor.stop(COAST)
+    # Wait for user input to navigate the menu
+    pressing_timer = 0
+    options_changed = False
+    while True:
+        if controller_1.buttonA.pressing():
+            if pressing_timer > 2000:
+                brain.screen.clear_screen()
+                brain.screen.set_cursor(1, 1)
+                brain.screen.print("Saving settings...")
+                break
+            else:
+                pressing_timer += 20
         else:
-            left_control_voltage = drive_kp * left_error
-            right_control_voltage = drive_kp * right_error
+            pressing_timer = 0
 
+        if controller_1.buttonB.pressing():
+            # Discard changes and exit
+            brain.screen.clear_screen()
+            brain.screen.set_cursor(1, 1)
+            brain.screen.print("Discarding changes...")
+            if motor_monitor is not None:
+                motor_monitor.mute(False)
+                motor_monitor.refresh()
+            ROBOT_ENABLED = True
+            return
+        if controller_1.buttonDown.pressing():
+            menu_selection = (menu_selection + 1) % len(menu_data)
+            wait(200, MSEC)  # Debounce delay
+            options_changed = True
+        if controller_1.buttonRight.pressing():
+            menu_data[menu_selection]["enabled"] = not menu_data[menu_selection]["enabled"]
+            options_changed = True
+            wait(200, MSEC)  # Debounce delay
+        if options_changed:
+            options_changed = False
+            brain.screen.set_cursor(6, 1)
+            brain.screen.print("[{}] {}          ".format("X" if menu_data[menu_selection]["enabled"] else " ", menu_data[menu_selection]["name"]))
         wait(20, MSEC)
 
+    ENABLE_HEADING_HOLD = menu_data[0]["enabled"]
+    ENABLE_AUTO_CLAW = menu_data[1]["enabled"]
+    brain.screen.new_line()
+    save_settings()
+    brain.screen.print("Settings saved!")
+    wait(1000, MSEC)
+    ROBOT_ENABLED = True
+    if motor_monitor is not None:
+        motor_monitor.mute(False)
+        motor_monitor.refresh()
 
-def autonomous():
-    while not ROBOT_INITIALIZED:
-        wait(100, MSEC)
-    brain.screen.clear_screen()
-    brain.screen.print("autonomous code")
-    # place automonous code here
+### DRIVETRAIN UTILITIES
+
+def calculate_effective_wheel_size():
+    wheel_efficiency = DRIVETRAIN_WHEEL_ANGLES / 90
+    effective_wheel_size = DRIVETRAIN_WHEEL_SIZE * wheel_efficiency / DRIVETRAIN_EXTERNAL_GEAR_RATIO
+    return effective_wheel_size
+
+def current_robot_speed(): # mm/s
+    # Returns the robot's speed based on the effective wheel size and motor RPM
+    effective_wheel_size = calculate_effective_wheel_size()
+
+    left_motor_rpms = (left_front_motor.velocity(RPM) + left_back_motor.velocity(RPM)) / 2
+    right_motor_rpms = (right_front_motor.velocity(RPM) + right_back_motor.velocity(RPM)) / 2
+    average_motor_rpm = (left_motor_rpms + right_motor_rpms) / 2
+    average_motor_rps = average_motor_rpm / 60
+
+    speed = average_motor_rps * effective_wheel_size
+    return speed
+
+### LIFT CONTROL
 
 LIFT_RUNNING = False
 LIFT_HOLDING = False
@@ -131,6 +212,11 @@ def initialize_lift():
     wait(100, MSEC)
     lift_motor.set_position(0, DEGREES)
     lift_motor.stop(COAST)
+
+def lift_height(percent=False):
+    if percent:
+        return (lift_motor.position(DEGREES) / LIFT_DEGREES_PER_LINK) * (100 / LIFT_LINKS)
+    return lift_motor.position(DEGREES) / LIFT_DEGREES_PER_LINK
 
 def raise_lift():
     global lift_hold_time_start, LIFT_RUNNING, LIFT_HOLDING
@@ -160,18 +246,17 @@ def lower_lift():
     lift_motor.set_stopping(HOLD)
     lift_motor.set_timeout(5, SECONDS)
     lift_motor.spin_to_position(0, DEGREES)
-    lift_motor.stop(HOLD)
+    if lift_height(percent=True) <= 1:
+        print("Lift is near the bottom, coasting")
+        lift_motor.stop(COAST)
+    else:
+        lift_motor.stop(HOLD)
     LIFT_RUNNING = False
     LIFT_HOLDING = True
     lift_hold_time_start = brain.timer.time(SECONDS)
     ending_position = lift_motor.position(DEGREES)
     total_links_moved = (starting_position - ending_position) / LIFT_DEGREES_PER_LINK
     #print("Lift down from {} to {}, total {} links".format(starting_position, ending_position, total_links_moved))
-
-def lift_height(percent=False):
-    if percent:
-        return (lift_motor.position(DEGREES) / LIFT_DEGREES_PER_LINK) * (100 / LIFT_LINKS)
-    return lift_motor.position(DEGREES) / LIFT_DEGREES_PER_LINK
 
 def check_lift_hold():
     global lift_hold_time_start, LIFT_RUNNING, LIFT_HOLDING
@@ -183,29 +268,7 @@ def check_lift_hold():
         lift_motor.stop(COAST)
         LIFT_HOLDING = False
 
-def OnControlButtonR2Pressed():
-    global lift_thread, lift_hold_time_start, LIFT_RUNNING, LIFT_HOLDING
-    if LIFT_RUNNING:
-        print("Was Running")
-        if lift_thread is not None: lift_thread.stop()
-        lift_motor.stop(HOLD)
-        LIFT_HOLDING = True
-        LIFT_RUNNING = False
-        lift_hold_time_start = brain.timer.time(SECONDS)
-        return
-    lift_thread = Thread(lower_lift)
-
-def OnControlButtonR1Pressed():
-    global lift_thread, lift_hold_time_start, LIFT_RUNNING, LIFT_HOLDING
-    if LIFT_RUNNING:
-        print("Was Running")
-        if lift_thread is not None: lift_thread.stop()
-        lift_motor.stop(HOLD)
-        LIFT_RUNNING = False
-        LIFT_HOLDING = True
-        lift_hold_time_start = brain.timer.time(SECONDS)
-        return
-    lift_thread = Thread(raise_lift)
+### CLAW CONTROL
 
 CLAW_ARM_RUNNING = False
 CLAW_ARM_UP_DEGREES = 165 * 3
@@ -229,11 +292,11 @@ def initialize_claw():
     claw_arm_motor2.set_timeout(1, SECONDS)
     claw_arm_motor1.spin_to_position(-20, DEGREES, wait=False)
     claw_arm_motor2.spin_to_position(-20, DEGREES)
+    wait(0.25, SECONDS)
     claw_arm_motor1.set_position(0, DEGREES)
     claw_arm_motor2.set_position(0, DEGREES)
-    wait(1, SECONDS)
-    claw_arm_motor1.stop(COAST)
-    claw_arm_motor2.stop(COAST)
+    claw_arm_motor1.stop(HOLD)
+    claw_arm_motor2.stop(HOLD)
 
 def raise_claw_arm():
     global CLAW_ARM_RUNNING, CLAW_ARM_POSITION
@@ -301,7 +364,160 @@ def lower_claw_arm():
     total_links_moved = (starting_position - ending_position) / LIFT_DEGREES_PER_LINK
     print("Claw down from {} to {}, total {} links".format(starting_position, ending_position, total_links_moved))
 
+CLAW_OPEN = 1
+CLAW_CLOSED = 0
+
+def claw_is_open():
+    return claw_solenoid.value() == CLAW_OPEN
+
+def claw_is_closed():
+    return claw_solenoid.value() == CLAW_CLOSED
+
+def open_claw():
+    claw_solenoid.set(CLAW_OPEN)
+
+def close_claw():
+    claw_solenoid.set(CLAW_CLOSED)
+
+def auto_claw_thread():
+    while True:
+        if ENABLE_AUTO_CLAW:
+            if claw_is_open() and lift_height(True) < 1:
+                if (CLAW_ARM_POSITION == CLAW_ARM_DOWN):
+                    if (claw_distance.object_distance() < 70):
+                        close_claw()
+                        wait(1, SECONDS)
+        wait(10, MSEC)
+
+### AUTONOMOUS
+
+pitch_offset = 0.0
+
+def pre_autonomous():
+    global ROBOT_INITIALIZED
+    global pitch_offset
+    global motor_monitor
+    # actions to do when the program starts
+    brain.screen.clear_screen()
+    brain.screen.print("pre auton code")
+    inertial.calibrate()
+    Thread(initialize_claw)
+    load_settings()
+    while inertial.is_calibrating():
+        wait(100, MSEC)
+    for i in range(10):
+        pitch_offset += inertial.orientation(OrientationType.ROLL, DEGREES)
+        wait(10, MSEC)
+    pitch_offset /= 10.0
+    print("Pitch offset: {:.1f}".format(pitch_offset))
+
+    motor_monitor = MotorMonitor(brain, all_motors, all_motor_names)
+    motor_monitor.start()
+    
+    ROBOT_INITIALIZED = True
+
+def limit(input, limit_value):
+    if (input > limit_value): return limit_value
+    elif (input < -limit_value): return -limit_value
+    return input
+
+def drive_for(distance, speed=100): # distance is in mm, speed is in percent
+    # setup
+    wheel_efficiency = 1 / cos(radians(DRIVETRAIN_WHEEL_ANGLES))
+    effective_wheel_size = 220 * wheel_efficiency * DRIVETRAIN_EXTERNAL_GEAR_RATIO
+    target_revs = distance / effective_wheel_size
+    print("Target revolutions: {:.2f}".format(target_revs))
+    target_tolerance = 10 / effective_wheel_size
+    drive_kp = 10.0  # Proportional gain for drive control
+
+    # save initial motor positions
+    starting_left_front_position = left_front_motor.position(TURNS)
+    starting_left_back_position = left_back_motor.position(TURNS)
+    starting_right_front_position = right_front_motor.position(TURNS)
+    starting_right_back_position = right_back_motor.position(TURNS)
+
+    print("LF: {}, LB: {}, RF: {}, RB: {}".format(starting_left_front_position, starting_left_back_position, starting_right_front_position, starting_right_back_position))
+
+    done = False
+    count = 0
+    while not done:
+        current_left_front_position = left_front_motor.position(TURNS)
+        current_left_back_position = left_back_motor.position(TURNS)
+        current_right_front_position = right_front_motor.position(TURNS)
+        current_right_back_position = right_back_motor.position(TURNS)
+
+        left_front_delta = current_left_front_position - starting_left_front_position
+        left_back_delta = current_left_back_position - starting_left_back_position
+        right_front_delta = current_right_front_position - starting_right_front_position
+        right_back_delta = current_right_back_position - starting_right_back_position
+
+        left_error = target_revs - (left_front_delta + left_back_delta) / 2.0
+        right_error = target_revs - (right_front_delta + right_back_delta) / 2.0
+        average_error = (left_error + right_error) / 2.0
+
+        if count > 1000 or (abs(average_error) < target_tolerance):
+            done = True
+            left_front_motor.stop(BRAKE)
+            left_back_motor.stop(BRAKE)
+            right_front_motor.stop(BRAKE)
+            right_back_motor.stop(BRAKE)
+        else:
+            left_control = drive_kp * average_error
+            right_control = drive_kp * average_error
+
+            left_control_percent = limit(left_control, 1.0) * speed
+            right_control_percent = limit(right_control, 1.0) * speed
+
+            left_front_motor.spin(FORWARD, left_control_percent, PERCENT)
+            left_back_motor.spin(FORWARD, left_control_percent, PERCENT)
+            right_front_motor.spin(FORWARD, right_control_percent, PERCENT)
+            right_back_motor.spin(FORWARD, right_control_percent, PERCENT)
+
+        count += 1
+        wait(10, MSEC)
+
+    # save initial motor positions
+    left_front_position = left_front_motor.position(TURNS)
+    left_back_position = left_back_motor.position(TURNS)
+    right_front_position = right_front_motor.position(TURNS)
+    right_back_position = right_back_motor.position(TURNS)
+
+    print("LF: {}, LB: {}, RF: {}, RB: {}".format(left_front_position, left_back_position, right_front_position, right_back_position))
+    
+def autonomous():
+    while not ROBOT_INITIALIZED:
+        wait(100, MSEC)
+    brain.screen.clear_screen()
+    brain.screen.print("autonomous code")
+    # place automonous code here
+    drive_for(600, 33)
+
+def StopLift():
+    global lift_thread, lift_hold_time_start, LIFT_RUNNING, LIFT_HOLDING
+    if LIFT_RUNNING:
+        print("Was Running")
+        if lift_thread is not None: lift_thread.stop()
+        lift_motor.stop(HOLD)
+        LIFT_HOLDING = True
+        LIFT_RUNNING = False
+        lift_hold_time_start = brain.timer.time(SECONDS)
+        return True
+    return False
+
+def OnLowerLiftPressed(): # R2
+    global lift_thread
+    if not ROBOT_ENABLED: return
+    if StopLift(): return
+    lift_thread = Thread(lower_lift)
+
+def OnRaiseLiftPressed(): # R1
+    global lift_thread
+    if not ROBOT_ENABLED: return
+    if StopLift(): return
+    lift_thread = Thread(raise_lift)
+
 def OnControlButtonL2Pressed():
+    if not ROBOT_ENABLED: return
     if CLAW_ARM_RUNNING:
         print("Was Running")
         claw_arm_motor1.stop(HOLD)
@@ -310,6 +526,7 @@ def OnControlButtonL2Pressed():
     thread = Thread(lower_claw_arm)
 
 def OnControlButtonL1Pressed():
+    if not ROBOT_ENABLED: return
     if CLAW_ARM_RUNNING:
         print("Was Running")
         claw_arm_motor1.stop(HOLD)
@@ -318,10 +535,22 @@ def OnControlButtonL1Pressed():
     thread = Thread(raise_claw_arm)
 
 def OnControlButtonAPressed():
+    if not ROBOT_ENABLED: return
     if claw_solenoid.value() == 1:
         claw_solenoid.set(0)
     else:
         claw_solenoid.set(1)
+    StopLift()
+
+def OnControlButtonUpPressed():
+    pressed_counter = 0
+    while pressed_counter < 30:
+        wait(100, MSEC)
+        if not controller_1.buttonUp.pressing():
+            return
+        pressed_counter += 1
+    # Button has been held for 30 cycles (3 seconds)
+    configuration_UI()
 
 custom_pitch = 0.0
 
@@ -424,6 +653,7 @@ AUTO_FORWARD_KP = 5.0
 NO_INPUT_TIMEOUT = 200
 
 def user_control():
+    global ROBOT_ENABLED
 
     brain.screen.clear_screen()
     brain.screen.print("driver control")
@@ -437,11 +667,13 @@ def user_control():
 
     controller_1.buttonA.pressed(OnControlButtonAPressed)
 
-    controller_1.buttonR2.pressed(OnControlButtonR2Pressed)
-    controller_1.buttonR1.pressed(OnControlButtonR1Pressed)
+    controller_1.buttonR2.pressed(OnLowerLiftPressed)
+    controller_1.buttonR1.pressed(OnRaiseLiftPressed)
 
     controller_1.buttonL2.pressed(OnControlButtonL2Pressed)
     controller_1.buttonL1.pressed(OnControlButtonL1Pressed)
+
+    controller_1.buttonUp.pressed(OnControlButtonUpPressed)
 
     # brain.timer.event(check_lift_hold, 10000)
 
@@ -461,7 +693,9 @@ def user_control():
     right_back_motor.set_stopping(COAST)
 
     # initialize_lift()
-    initialize_claw()
+    Thread(auto_claw_thread)
+
+    ROBOT_ENABLED = True
 
     loop_count = 0
 
@@ -469,6 +703,10 @@ def user_control():
     while True:
         #if add_sample():
         #    dumpsamples()
+
+        if not ROBOT_ENABLED:
+            wait(100, MSEC)
+            continue
             
         raw_forward = controller_1.axis3.position()
         raw_strafe = controller_1.axis4.position()
@@ -587,7 +825,7 @@ def user_control():
             auto_turn = 0
             last_turn_error = 0
         # Case 2: Forward or strafe still active
-        elif forward != 0 or strafe != 0:
+        elif ENABLE_HEADING_HOLD and (forward != 0 or strafe != 0):
             turn_error = rotation_set - inertial.rotation(DEGREES)
             auto_turn = turn_error * AUTO_TURN_KP + (turn_error - last_turn_error) * AUTO_TURN_KD
             last_turn_error = turn_error
@@ -602,10 +840,25 @@ def user_control():
         combined_turn = turn + auto_turn
         
         if not all_stop:
-            left_front_motor.set_velocity((combined_forward + combined_turn + combined_strafe), PERCENT)
-            left_back_motor.set_velocity((combined_forward + combined_turn - combined_strafe), PERCENT)
-            right_front_motor.set_velocity((combined_forward - combined_turn - combined_strafe), PERCENT)
-            right_back_motor.set_velocity((combined_forward - combined_turn + combined_strafe), PERCENT)
+            # mixing the combined forward, strafe, and turn inputs to calculate individual motor speeds
+            left_front_speed = combined_forward + combined_turn + combined_strafe
+            left_back_speed = combined_forward + combined_turn - combined_strafe
+            right_front_speed = combined_forward - combined_turn - combined_strafe
+            right_back_speed = combined_forward - combined_turn + combined_strafe
+
+            # check for saturation and scale motor speeds if necessary
+            max_raw_speed = max(abs(left_front_speed), abs(left_back_speed), abs(right_front_speed), abs(right_back_speed))
+            if max_raw_speed > 100:
+                left_front_speed = left_front_speed / max_raw_speed * 100
+                left_back_speed = left_back_speed / max_raw_speed * 100
+                right_front_speed = right_front_speed / max_raw_speed * 100
+                right_back_speed = right_back_speed / max_raw_speed * 100
+
+            # set resulting velocities for each motor and spin
+            left_front_motor.set_velocity(left_front_speed, PERCENT)
+            left_back_motor.set_velocity(left_back_speed, PERCENT)
+            right_front_motor.set_velocity(right_front_speed, PERCENT)
+            right_back_motor.set_velocity(right_back_speed, PERCENT)
 
             left_front_motor.spin(FORWARD)
             left_back_motor.spin(FORWARD)
@@ -614,9 +867,9 @@ def user_control():
 
         wait(10, MSEC)
 
-        if loop_count % 100 == 0:
+        # if loop_count % 100 == 0:
             #print("Lift {}".format(lift_motor.position(DEGREES)))
-            print("Rotation: {:.1f}".format(inertial.rotation(DEGREES)))
+            # print("Rotation: {:.1f}".format(inertial.rotation(DEGREES)))
 
         loop_count += 1
 
