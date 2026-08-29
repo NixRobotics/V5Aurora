@@ -490,7 +490,7 @@ def autonomous():
     brain.screen.clear_screen()
     brain.screen.print("autonomous code")
     # place automonous code here
-    drive_for(600, 33)
+    drive_for(100, 33)
 
 def StopLift():
     global lift_thread, lift_hold_time_start, LIFT_RUNNING, LIFT_HOLDING
