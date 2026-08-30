@@ -228,6 +228,24 @@ def lift_height(percent=False):
         return (lift_motor.position(DEGREES) / LIFT_DEGREES_PER_LINK) * (100 / LIFT_LINKS)
     return lift_motor.position(DEGREES) / LIFT_DEGREES_PER_LINK
 
+def command_lift(links):
+    global lift_hold_time_start, LIFT_RUNNING, LIFT_HOLDING
+    if LIFT_RUNNING: return
+    LIFT_RUNNING = True
+    LIFT_HOLDING = False
+    starting_position = lift_motor.position(DEGREES)
+    lift_motor.set_velocity(100, PERCENT)
+    lift_motor.set_stopping(HOLD)
+    lift_motor.set_timeout(5, SECONDS)
+    lift_motor.spin_to_position(links * LIFT_DEGREES_PER_LINK, DEGREES)
+    lift_motor.stop()
+    LIFT_RUNNING = False
+    LIFT_HOLDING = True
+    lift_hold_time_start = brain.timer.time(SECONDS)
+    ending_position = lift_motor.position(DEGREES)
+    total_links_moved = (ending_position - starting_position) / LIFT_DEGREES_PER_LINK
+    #print("Lift up from {} to {}, total {} links".format(starting_position, ending_position, total_links_moved))
+
 def raise_lift():
     global lift_hold_time_start, LIFT_RUNNING, LIFT_HOLDING
     if LIFT_RUNNING: return
@@ -280,10 +298,11 @@ def check_lift_hold():
 
 ### CLAW CONTROL
 
+CLAW_INITALIZED = False
 CLAW_ARM_RUNNING = False
-CLAW_ARM_UP_DEGREES = 165 * 3
-CLAW_ARM_MID2_DEGREES = 30 * 3
-CLAW_ARM_MID1_DEGREES = 24 * 3
+CLAW_ARM_UP_DEGREES = 160 * 3
+CLAW_ARM_MID2_DEGREES = 24.5 * 3
+CLAW_ARM_MID1_DEGREES = 18 * 3
 CLAW_ARM_DOWN_DEGREES = 0 * 3
 CLAW_ARM_DOWN = 0
 CLAW_ARM_MID1 = 1
@@ -294,6 +313,8 @@ CLAW_ARM_TIMEOUT = 2.0
 CLAW_ARM_SPEED = 50
 
 def initialize_claw():
+    global CLAW_INITALIZED
+    if CLAW_INITALIZED: return
     claw_arm_motor1.set_velocity(20, PERCENT)
     claw_arm_motor1.set_stopping(HOLD)
     claw_arm_motor1.set_timeout(CLAW_ARM_TIMEOUT, SECONDS)
@@ -307,6 +328,7 @@ def initialize_claw():
     claw_arm_motor2.set_position(0, DEGREES)
     claw_arm_motor1.stop(HOLD)
     claw_arm_motor2.stop(HOLD)
+    CLAW_INITALIZED = True
 
 def raise_claw_arm():
     global CLAW_ARM_RUNNING, CLAW_ARM_POSITION
@@ -610,12 +632,19 @@ def autonomous():
         wait(100, MSEC)
     brain.screen.clear_screen()
     brain.screen.print("autonomous code")
-    Thread(initialize_claw)
+    initialize_claw()
     # place automonous code here
-    drive_for(100, False, 50)
+    # drive_for(100, False, 50)
     # turn_for(360)
-    # drive_for(600, False, 50)
-    # drive_for(600, True, 50)
+    raise_claw_arm()
+    raise_claw_arm()
+    raise_claw_arm()
+    drive_for(50 * 25.4, False, 50)
+    drive_for(-450, True, 50)
+    drive_for(11 * 25.4, False, 50)
+    command_lift(10)
+    lower_claw_arm()
+    open_claw()
 
 def StopLift():
     global lift_thread, lift_hold_time_start, LIFT_RUNNING, LIFT_HOLDING
