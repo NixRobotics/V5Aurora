@@ -13,7 +13,7 @@
 
 # Library imports
 from vex import *
-from math import radians, cos, sin
+from math import radians, cos, sin, sqrt
 import json
 
 from v5pythonlibrary import *
@@ -34,9 +34,14 @@ right_back_motor = Motor(Ports.PORT12, GearSetting.RATIO_6_1, False)
 DRIVETRAIN_EXTERNAL_GEAR_RATIO = 24/48
 DRIVETRAIN_WHEEL_ANGLES = 45 # deg from straight
 DRIVETRAIN_WHEEL_SIZE = 220 # mm circumference
+DRIVETRAIN_MAX_TORQUE = 0.35 # Nm
 
 inertial = InertialWrapper(Ports.PORT5, 1.0)
 claw_distance = Distance(Ports.PORT2)
+
+BACK_DISTANCE_COMPENSATION = 1500 / 1525
+BACK_DISTANCE_FROM_BACK = 35 # mm
+back_distance = Distance(Ports.PORT18)
 
 claw_solenoid = DigitalOut(brain.three_wire_port.a)
 toggle_solenoid = DigitalOut(brain.three_wire_port.h)
@@ -54,6 +59,7 @@ motor_monitor = None
 # Begin project code
 ROBOT_INITIALIZED = False
 ROBOT_ENABLED = False
+QUIET_MODE = False
 
 ### ROBOT CONFIGURATION
 
@@ -330,27 +336,42 @@ def initialize_claw():
     claw_arm_motor2.stop(HOLD)
     CLAW_INITALIZED = True
 
-def raise_claw_arm():
+CLAW_ARM_COMMAND_NONE = 0
+CLAW_ARM_COMMAND_RAISE = 1
+CLAW_ARM_COMMAND_LOWER = 2
+CLAW_ARM_COMMAND_TO_POSITION = 3
+
+def run_claw_arm(command, target_position=-1):
     global CLAW_ARM_RUNNING, CLAW_ARM_POSITION
     if CLAW_ARM_RUNNING: return
 
-    if CLAW_ARM_POSITION == CLAW_ARM_DOWN:
-        claw_target_position = CLAW_ARM_MID1
-        claw_target_degrees = CLAW_ARM_MID1_DEGREES
-    elif CLAW_ARM_POSITION == CLAW_ARM_MID1:
-        claw_target_position = CLAW_ARM_MID2
-        claw_target_degrees = CLAW_ARM_MID2_DEGREES
-    elif CLAW_ARM_POSITION == CLAW_ARM_MID2:
-        claw_target_position = CLAW_ARM_UP
-        claw_target_degrees = CLAW_ARM_UP_DEGREES
-    else: return
+    positions_list = [CLAW_ARM_DOWN, CLAW_ARM_MID1, CLAW_ARM_MID2, CLAW_ARM_UP]
+    target_list = [CLAW_ARM_DOWN_DEGREES, CLAW_ARM_MID1_DEGREES, CLAW_ARM_MID2_DEGREES, CLAW_ARM_UP_DEGREES]
+
+    if command == CLAW_ARM_COMMAND_NONE: return
+    if command == CLAW_ARM_COMMAND_RAISE:
+        if CLAW_ARM_POSITION >= CLAW_ARM_UP: return
+        claw_target_position = CLAW_ARM_POSITION + 1
+        arm_speed = CLAW_ARM_SPEED
+    elif command == CLAW_ARM_COMMAND_LOWER:
+        if CLAW_ARM_POSITION <= CLAW_ARM_DOWN: return
+        claw_target_position = CLAW_ARM_POSITION - 1
+        arm_speed = CLAW_ARM_SPEED * 0.75
+    elif command == CLAW_ARM_COMMAND_TO_POSITION:
+        if target_position == CLAW_ARM_POSITION: return
+        if target_position < CLAW_ARM_DOWN or target_position > CLAW_ARM_UP: return
+        claw_target_position = target_position
+        if target_position > CLAW_ARM_POSITION: arm_speed = CLAW_ARM_SPEED
+        else: arm_speed = CLAW_ARM_SPEED * 0.75
+
+    claw_target_degrees = target_list[claw_target_position]
 
     CLAW_ARM_RUNNING = True
     starting_position = claw_arm_motor1.position(DEGREES)
-    claw_arm_motor1.set_velocity(CLAW_ARM_SPEED, PERCENT)
+    claw_arm_motor1.set_velocity(arm_speed, PERCENT)
     claw_arm_motor1.set_stopping(HOLD)
     claw_arm_motor1.set_timeout(CLAW_ARM_TIMEOUT, SECONDS)
-    claw_arm_motor2.set_velocity(CLAW_ARM_SPEED, PERCENT)
+    claw_arm_motor2.set_velocity(arm_speed, PERCENT)
     claw_arm_motor2.set_stopping(HOLD)
     claw_arm_motor2.set_timeout(CLAW_ARM_TIMEOUT, SECONDS)
     claw_arm_motor1.spin_to_position(claw_target_degrees, DEGREES, wait=False)
@@ -361,40 +382,16 @@ def raise_claw_arm():
     CLAW_ARM_POSITION = claw_target_position
     ending_position = claw_arm_motor1.position(DEGREES)
     total_links_moved = (ending_position - starting_position) / LIFT_DEGREES_PER_LINK
-    print("Claw up from {} to {}, total {} links".format(starting_position, ending_position, total_links_moved))
+    print("Claw from {} to {}, total {} links".format(starting_position, ending_position, total_links_moved))
+
+def raise_claw_arm():
+    run_claw_arm(CLAW_ARM_COMMAND_RAISE)
 
 def lower_claw_arm():
-    global CLAW_ARM_RUNNING, CLAW_ARM_POSITION
-    if CLAW_ARM_RUNNING: return
+    run_claw_arm(CLAW_ARM_COMMAND_LOWER)
 
-    if CLAW_ARM_POSITION == CLAW_ARM_UP:
-        claw_target_position = CLAW_ARM_MID2
-        claw_target_degrees = CLAW_ARM_MID2_DEGREES
-    elif CLAW_ARM_POSITION == CLAW_ARM_MID2:
-        claw_target_position = CLAW_ARM_MID1
-        claw_target_degrees = CLAW_ARM_MID1_DEGREES
-    elif CLAW_ARM_POSITION == CLAW_ARM_MID1:
-        claw_target_position = CLAW_ARM_DOWN
-        claw_target_degrees = CLAW_ARM_DOWN_DEGREES
-    else: return
-
-    CLAW_ARM_RUNNING = True
-    starting_position = claw_arm_motor1.position(DEGREES)
-    claw_arm_motor1.set_velocity(CLAW_ARM_SPEED * 0.75, PERCENT)
-    claw_arm_motor1.set_stopping(HOLD)
-    claw_arm_motor1.set_timeout(CLAW_ARM_TIMEOUT, SECONDS)
-    claw_arm_motor2.set_velocity(CLAW_ARM_SPEED * 0.75, PERCENT)
-    claw_arm_motor2.set_stopping(HOLD)
-    claw_arm_motor2.set_timeout(CLAW_ARM_TIMEOUT, SECONDS)
-    claw_arm_motor1.spin_to_position(claw_target_degrees, DEGREES, wait=False)
-    claw_arm_motor2.spin_to_position(claw_target_degrees, DEGREES)
-    claw_arm_motor1.stop()
-    claw_arm_motor2.stop()
-    CLAW_ARM_RUNNING = False
-    CLAW_ARM_POSITION = claw_target_position
-    ending_position = claw_arm_motor1.position(DEGREES)
-    total_links_moved = (starting_position - ending_position) / LIFT_DEGREES_PER_LINK
-    print("Claw down from {} to {}, total {} links".format(starting_position, ending_position, total_links_moved))
+def move_claw_arm_to_position(target_position):
+    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, target_position)
 
 CLAW_OPEN = 1
 CLAW_CLOSED = 0
@@ -503,14 +500,16 @@ def turn_for(turn_degrees, speed=66):
     right_front_motor.stop()
     right_back_motor.stop()
 
+FOWARD_EFFICIENCY = 1 / 1.045
 def drive_for(distance, strafe=False, speed=100, heading=None): # distance is in mm, speed is in percent
     # setup
     turn_speed = 100 # max turn speed in percent
     wheel_efficiency = 1 / cos(radians(DRIVETRAIN_WHEEL_ANGLES))
     effective_wheel_size = 220 * wheel_efficiency * DRIVETRAIN_EXTERNAL_GEAR_RATIO
-    forward_target_revs = distance / effective_wheel_size if not strafe else 0
+    forward_target_revs = (distance / effective_wheel_size) / FOWARD_EFFICIENCY if not strafe else 0
     strafe_target_revs = distance / effective_wheel_size if strafe else 0
-    print("Target revolutions: {:.2f} {:.2f}".format(forward_target_revs, strafe_target_revs))
+    if not QUIET_MODE:
+        print("Target revolutions: {:.2f} {:.2f}".format(forward_target_revs, strafe_target_revs))
     target_tolerance = 10 / effective_wheel_size
     drive_kp = 1.0  # Proportional gain for drive control
     turn_kp = 5.0  # Proportional gain for turn control
@@ -524,7 +523,8 @@ def drive_for(distance, strafe=False, speed=100, heading=None): # distance is in
     # save starting rotation
     target_rotation = heading if heading is not None else inertial.rotation()
 
-    print("LF: {}, LB: {}, RF: {}, RB: {}".format(starting_left_front_position, starting_left_back_position, starting_right_front_position, starting_right_back_position))
+    if not QUIET_MODE:
+        print("LF: {}, LB: {}, RF: {}, RB: {}".format(starting_left_front_position, starting_left_back_position, starting_right_front_position, starting_right_back_position))
 
     done = False
     timeout_count = 0
@@ -625,9 +625,10 @@ def drive_for(distance, strafe=False, speed=100, heading=None): # distance is in
     right_front_position = right_front_motor.position(TURNS)
     right_back_position = right_back_motor.position(TURNS)
 
-    print("LF: {}, LB: {}, RF: {}, RB: {}".format(left_front_position, left_back_position, right_front_position, right_back_position))
+    if not QUIET_MODE:
+        print("LF: {}, LB: {}, RF: {}, RB: {}".format(left_front_position, left_back_position, right_front_position, right_back_position))
     
-def autonomous():
+def autonomous_skills():
     while not ROBOT_INITIALIZED:
         wait(100, MSEC)
     brain.screen.clear_screen()
@@ -645,6 +646,165 @@ def autonomous():
     command_lift(10)
     lower_claw_arm()
     open_claw()
+
+def autonomous_match():
+    while not ROBOT_INITIALIZED:
+        wait(100, MSEC)
+    brain.screen.clear_screen()
+    brain.screen.print("autonomous code")
+    initialize_claw()
+    # place automonous code here
+    drive_for(100, False, 50)
+
+# + 30mm at 1440mm
+# + 22mm at 950mm
+# + 19.4mm at 460mm, encoder average reading 501mm
+# Distance from back to center = 180mm
+# Distance sensor to back = 35mm
+# Forward travel
+def average_back_distance(samples=10):
+    total_distance = 0
+    for _ in range(samples):
+        total_distance += back_distance.object_distance(MM)
+        wait(33, MSEC)
+    return total_distance / samples
+
+def motor_distance_step(current, previous):
+    lf = current[0] - previous[0]
+    lb = current[1] - previous[1]
+    rf = current[2] - previous[2]
+    rb = current[3] - previous[3]
+    forward = (lf + lb + rf + rb) / 4
+    side = (lf - rf - lb + rb) / 4
+    forward = forward * DRIVETRAIN_EXTERNAL_GEAR_RATIO * DRIVETRAIN_WHEEL_SIZE * sqrt(2) * FOWARD_EFFICIENCY
+    side = side * DRIVETRAIN_EXTERNAL_GEAR_RATIO * DRIVETRAIN_WHEEL_SIZE * sqrt(2)
+    return forward, side
+
+def motor_total_distance():
+    lf = left_front_motor.position(TURNS)
+    lb = left_back_motor.position(TURNS)
+    rf = right_front_motor.position(TURNS)
+    rb = right_back_motor.position(TURNS)
+    forward, side = motor_distance_step([lf, lb, rf, rb], [0, 0, 0, 0])
+    return forward, side
+
+def odom_thread():
+    X = 0
+    Y = 0
+    theta = inertial.rotation()
+    previous_motor_positions = [left_front_motor.position(TURNS), left_back_motor.position(TURNS), right_front_motor.position(TURNS), right_back_motor.position(TURNS)]
+    previous_theta = theta
+    count = 0
+    while True:
+        current_motor_positions = [left_front_motor.position(TURNS), left_back_motor.position(TURNS), right_front_motor.position(TURNS), right_back_motor.position(TURNS)]
+        current_theta = inertial.rotation()
+        delta_forward, delta_side = motor_distance_step(current_motor_positions, previous_motor_positions)
+        delta_theta = current_theta - previous_theta
+
+        if delta_theta == 0.0:
+            to_global_rotation_angle = current_theta
+            delta_local_x = delta_forward
+            delta_local_y = delta_side
+        else:
+            r_forward = delta_forward / radians(delta_theta) # mm
+            r_side = delta_side / radians(delta_theta) # mm
+
+            to_global_rotation_angle = current_theta + delta_theta / 2.0
+            delta_local_x = r_forward * 2.0 * sin(radians(delta_theta) / 2.0)
+            delta_local_y = r_side * 2.0 * sin(radians(delta_theta) / 2.0)
+
+        delta_global_x = delta_local_x * cos(radians(to_global_rotation_angle)) - delta_local_y * sin(radians(to_global_rotation_angle))
+        delta_global_y = delta_local_x * sin(radians(to_global_rotation_angle)) + delta_local_y * cos(radians(to_global_rotation_angle))
+
+        X += delta_global_x
+        Y += delta_global_y
+
+        previous_motor_positions = current_motor_positions
+        previous_theta = current_theta
+
+        if not QUIET_MODE and count % 200 == 0:
+            print("X: {:4.0f}, Y: {:4.0f}, H: {:3.2f}".format(X, Y, current_theta))
+        count += 1
+
+        wait(10, MSEC)
+
+def log_drivetrain():
+    global QUIET_MODE
+
+    motors = [left_front_motor, left_back_motor, right_front_motor, right_back_motor]
+    headers = ["lfm", "lbm", "rfm", "rbm"]
+    units = ["POS", "VEL", "TRQ"]
+
+    log = []
+
+    # Run ramp test
+
+    TOTAL_SAMPLES = 400
+    PRINT_DELAY = 250 # ms between samples. Set to around 250 for wireless or 50 for USB
+
+    for i in range(TOTAL_SAMPLES):
+
+        entry = [inertial.rotation(DEGREES), back_distance.object_distance(MM)]
+        for motor in motors:
+            if motor is not None:
+                entry.append(motor.position(RotationUnits.REV))
+                entry.append(motor.velocity(VelocityUnits.PERCENT))
+                torque_percent = motor.torque(TorqueUnits.NM) / DRIVETRAIN_MAX_TORQUE * 100.0
+                entry.append(torque_percent)
+            else:
+                entry.append(0.0)
+                entry.append(0.0)
+                entry.append(0.0)
+
+        log.append(entry)
+        wait (10, MSEC)
+
+    QUIET_MODE = True
+    wait(100, MSEC)
+
+    output = "idx, heading, dist, "
+    for j in range(0, len(headers)):
+        header = headers[j]
+        for k in range(0, len(units)):
+            unit = units[k]
+            if j == len(headers) - 1 and k == len(units) - 1:
+                output += "{} {}".format(header, unit)
+            else:
+                output += "{} {}, ".format(header, unit)
+    print(output)
+
+    for i in range(TOTAL_SAMPLES):
+        log_entry = log[i]
+        log_length = len(log_entry)
+        output = "{}, ".format(i)
+
+        for j in range(0, log_length):
+            if j < log_length - 1:
+                output += "{}, ".format(log_entry[j])
+            else:
+                output += "{}".format(log_entry[j])
+
+        print(output)
+        wait(PRINT_DELAY, MSEC)
+
+def autonomous():
+    while not ROBOT_INITIALIZED:
+        wait(100, MSEC)
+    brain.screen.clear_screen()
+    brain.screen.print("autonomous code")
+    Thread(odom_thread)
+    initialize_claw()
+    Thread(log_drivetrain)
+    # place automonous code here
+    starting_distance = average_back_distance()
+    print("Back distance: {}".format(starting_distance))
+    drive_for(1500, False, 50)
+    wait(500, MSEC)
+    ending_distance = average_back_distance()
+    print("Back distance: {}".format(ending_distance))
+    print("Back distance delta: {}".format(ending_distance - starting_distance))
+    print("Odometer distance: {}".format(motor_total_distance()))
+    print("Rotation: {}".format(inertial.rotation()))
 
 def StopLift():
     global lift_thread, lift_hold_time_start, LIFT_RUNNING, LIFT_HOLDING
@@ -670,7 +830,7 @@ def OnRaiseLiftPressed(): # R1
     if StopLift(): return
     lift_thread = Thread(raise_lift)
 
-def OnControlButtonL2Pressed():
+def OnLowerClawPressed(): # L2
     if not ROBOT_ENABLED: return
     if CLAW_ARM_RUNNING:
         print("Was Running")
@@ -679,7 +839,7 @@ def OnControlButtonL2Pressed():
         return
     thread = Thread(lower_claw_arm)
 
-def OnControlButtonL1Pressed():
+def OnRaiseClawPressed():
     if not ROBOT_ENABLED: return
     if CLAW_ARM_RUNNING:
         print("Was Running")
@@ -851,8 +1011,8 @@ def user_control():
     controller_1.buttonR2.pressed(OnLowerLiftPressed)
     controller_1.buttonR1.pressed(OnRaiseLiftPressed)
 
-    controller_1.buttonL2.pressed(OnControlButtonL2Pressed)
-    controller_1.buttonL1.pressed(OnControlButtonL1Pressed)
+    controller_1.buttonL2.pressed(OnLowerClawPressed)
+    controller_1.buttonL1.pressed(OnRaiseClawPressed)
 
     controller_1.buttonUp.pressed(OnControlButtonUpPressed)
 
@@ -875,6 +1035,7 @@ def user_control():
 
     # initialize_lift()
     Thread(auto_claw_thread)
+    Thread(odom_thread)
 
     ROBOT_ENABLED = True
 
