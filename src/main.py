@@ -24,8 +24,8 @@ from v5pythonlibrary import * # Loaded from SDCard
 
 CALIBRATION = False
 
-# ALLIANCE_COLOR = AllianceColor.RED
-ALLIANCE_COLOR = AllianceColor.BLUE
+ALLIANCE_COLOR = AllianceColor.RED
+# ALLIANCE_COLOR = AllianceColor.BLUE
 
 # AUTON_SEQUENCE = AutonSequence.SKILLS
 # AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
@@ -1267,6 +1267,42 @@ def autonomous_right():
     drive_for(50, False, 50, heading = 0)
     drive_for(-50, False, 50, heading = 0)
     raise_toggle()
+
+    Thread(claw_move1)
+    wait(250,MSEC)
+    drive_for(100, False, 50, heading = 0)
+    drive_for(-700, True, 50, heading = 0)
+    drive_for(100, False, 50, heading = 0)
+    command_lift(3)
+    open_claw()
+    wall_distance = average_back_distance() - BACK_DISTANCE_FROM_BACK
+    target_distance = 120 
+    reverse_by = target_distance - wall_distance
+    drive_for(reverse_by, False, 50, heading = 0)
+    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
+    command_lift(0)
+    current_heading = inertial.rotation()
+    target_heading = 180
+    turn_for(target_heading - current_heading, 66)
+    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID3)
+    wait(250, MSEC)
+    close_claw()
+    command_lift(5)
+    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
+    current_heading = inertial.rotation()
+    target_heading = 0
+    turn_for(target_heading - current_heading, 66)
+    command_lift(11)
+    drive_for(-reverse_by+20, False, 50, heading = 0)
+    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID1)
+    wait(250, MSEC)
+    command_lift(9)
+    open_claw()
+    wait(250, MSEC)
+    drive_for(reverse_by, False, 50, heading = 0)
+    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
+    command_lift(0)
+
 
 def autonomous():
     global ROBOT_ENABLED
