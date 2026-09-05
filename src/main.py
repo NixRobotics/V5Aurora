@@ -27,9 +27,9 @@ CALIBRATION = False
 ALLIANCE_COLOR = AllianceColor.RED
 # ALLIANCE_COLOR = AllianceColor.BLUE
 
-# AUTON_SEQUENCE = AutonSequence.SKILLS
+AUTON_SEQUENCE = AutonSequence.SKILLS
 # AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
-AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
+# AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
 # AUTON_SEQUENCE = AutonSequence.MATCH_NONE
 
 # ------------------------------------------------------------ #
@@ -1179,21 +1179,21 @@ def autonomous_calibration():
 def autonomous_skills():
     # Thread(odom_thread)
     # place automonous code here
-    while not CLAW_INITIALIZED:
-        wait(10, MSEC)
-
-    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_UP)
+    # while not CLAW_INITIALIZED:
+        # wait(10, MSEC)
+    wait(1, SECONDS)
+    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID1)
     wait(500, MSEC)
     # Thread(log_drivetrain)
-    drive_for(51 * 25.4, False, 50)
-    drive_for(-400, True, 50)
-    drive_for(11 * 25.4, False, 50)
-    command_lift(11)
+    drive_for(51 * 25.4, False, 50, heading = 0)
+    drive_for(-450, True, 50, heading = 0)
+    command_lift(13)
+    drive_for(11 * 25.4, False, 50, timeout = 5, heading = 0)
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID2)
     command_lift(10)
     wait(500, MSEC)
     open_claw()
-    drive_for(-150, False, 50)
+    drive_for(-150, False, 50, heading = 0)
     # TODO: Move back to safe distance
 
 def autonomous_none():
