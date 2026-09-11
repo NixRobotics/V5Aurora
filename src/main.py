@@ -22,7 +22,7 @@ from v5pythonlibrary import * # Loaded from SDCard
 ### SETUP DEFAULT ALLIANCE AND AUTONOMOUS SEQUENCE HERE
 # ------------------------------------------------------------ #
 
-CALIBRATION = False
+CALIBRATION = True
 
 ALLIANCE_COLOR = AllianceColor.RED
 # ALLIANCE_COLOR = AllianceColor.BLUE
@@ -1051,7 +1051,7 @@ def log_drivetrain():
     # Run ramp test
 
     TOTAL_SAMPLES = 400
-    PRINT_DELAY = 250 # ms between samples. Set to around 250 for wireless or 50 for USB
+    PRINT_DELAY = 50 # ms between samples. Set to around 250 for wireless or 50 for USB
 
     for i in range(TOTAL_SAMPLES):
 
@@ -1155,21 +1155,27 @@ def log_odom():
 
 def autonomous_calibration():
     # Thread(odom_thread)
-    # Thread(log_drivetrain)
+    Thread(log_drivetrain)
     # Thread(log_odom)
     # place automonous code here
     # starting_distance = average_back_distance()
     #print("Back distance: {}".format(starting_distance))
     wait(100, MSEC)
+
+    # drive_for(1200, False, 50, heading = 0)
+    # wait(100, MSEC)
+    # return
+
     while True:
-        drive_to_xy(900.0, 1800.0, False, 33, heading = 0)
-        wait(500, MSEC)
-        drive_to_xy(900.0, 700.0, True, 33, heading = 0)
-        wait(500, MSEC)
-        drive_to_xy(300.0, 700.0, False, 33, heading = 0)
-        wait(500, MSEC)
-        drive_to_xy(300.0, 1800.0, True, 33, heading = 0)
-        wait(500, MSEC)
+        drive_to_xy(900.0, 1800.0, False, 50, heading = 0)
+        #wait(500, MSEC)
+        drive_to_xy(900.0, 700.0, True, 50, heading = 0)
+        #wait(500, MSEC)
+        drive_to_xy(300.0, 700.0, False, 50, heading = 0)
+        #wait(500, MSEC)
+        drive_to_xy(300.0, 1800.0, True, 50, heading = 0)
+        #wait(500, MSEC)
+        # break
     # ending_distance = average_back_distance()
     # print("Back distance: {}".format(ending_distance))
     # print("Back distance delta: {}".format(ending_distance - starting_distance))
@@ -1188,7 +1194,7 @@ def autonomous_skills():
     drive_for(51 * 25.4, False, 50, heading = 0)
     drive_for(-450, True, 50, heading = 0)
     command_lift(13)
-    drive_for(11 * 25.4, False, 50, timeout = 5, heading = 0)
+    drive_for(11 * 25.4, False, 50, timeout = 5000, heading = 0)
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID2)
     command_lift(10)
     wait(500, MSEC)
@@ -1430,6 +1436,35 @@ def OnControlButtonUpPressed():
     # Button has been held for 30 cycles (3 seconds)
     configuration_UI()
 
+samples = []
+
+def add_sample():
+    if len(samples) >= 200: return True
+    samples.append([
+        inertial.orientation(OrientationType.ROLL, DEGREES),
+        inertial.orientation(OrientationType.PITCH, DEGREES),
+        inertial.acceleration(AxisType.XAXIS),
+        inertial.acceleration(AxisType.YAXIS),
+        inertial.acceleration(AxisType.ZAXIS),
+        inertial.gyro_rate(AxisType.XAXIS, DPS),
+        inertial.gyro_rate(AxisType.YAXIS, DPS),
+        inertial.gyro_rate(AxisType.ZAXIS, DPS)
+    ])
+    return False
+
+def dump_samples_thread():
+    print("Roll,Pitch,AccelX,AccelY,AccelZ,GyroX,GyroY,GyroZ")
+    for sample in samples:
+        print("{:0.2f},{:0.2f},{:0.2f},{:0.2f},{:0.2f},{:0.2f},{:0.2f},{:0.2f}".format(*sample))
+        wait(333, MSEC)
+
+dumped = False
+def dumpsamples():
+    global dumped
+    if dumped: return
+    dumped = True
+    thread = Thread(dump_samples_thread)
+
 # Default maximum drive and turn rates
 DEFAULT_TURN_MAX = 75.0 # maximum turn rate
 DEFAULT_DRIVE_MAX = 100.0 # maximum drive rate
@@ -1569,8 +1604,8 @@ def user_control():
 
     # place driver control in this while loop
     while True:
-        #if add_sample():
-        #    dumpsamples()
+        if add_sample():
+            dumpsamples()
 
         if not ROBOT_ENABLED:
             wait(100, MSEC)
