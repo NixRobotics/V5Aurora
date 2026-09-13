@@ -13,7 +13,7 @@
 
 # Library imports
 from vex import *
-from math import radians, cos, sin, sqrt
+from math import radians, cos, sin, sqrt, pi
 import json
 
 from v5pythonlibrary import * # Loaded from SDCard
@@ -72,6 +72,14 @@ left_distance = Distance(Ports.PORT6)
 RIGHT_DISTANCE_COMPENSATION = 1.0
 RIGHT_DISTANCE_FROM_RIGHT = 10 # mm
 right_distance = Distance(Ports.PORT8)
+
+ROTATION_SIDE_WHEEL_SIZE = 2 * 25.4 * pi # mm circumference
+ROTATION_SIDE_WHEEL_OFFSET = 2.5 * 25.4 # mm (forward)
+rotation_side = Rotation(Ports.PORT18, True)
+
+ROTATION_FWD_WHEEL_SIZE = 2 * 25.4 * pi # mm circumference
+ROTATION_FWD_WHEEL_OFFSET = 0.0 * 25.4 # mm (forward)
+rotation_fwd = None
 
 claw_solenoid = DigitalOut(brain.three_wire_port.a)
 toggle_solenoid = DigitalOut(brain.three_wire_port.h)
@@ -792,6 +800,20 @@ def motor_distance_step(current, previous):
     side = side * DRIVETRAIN_EXTERNAL_GEAR_RATIO * DRIVETRAIN_WHEEL_SIZE * sqrt(2)
     return forward, side
 
+def tracking_distance_step(current, previous):
+    if current[0] is None: forward = None
+    else:
+        forward = current[0] - previous[0]
+    if current[1] is None: side = None
+    else:
+        side = current[1] - previous[1]
+
+    if forward is not None:
+        forward = forward * ROTATION_FWD_WHEEL_SIZE
+    if side is not None:
+        side = side * ROTATION_SIDE_WHEEL_SIZE
+    return forward, side
+
 def motor_total_distance():
     lf = left_front_motor.position(TURNS)
     lb = left_back_motor.position(TURNS)
@@ -864,6 +886,7 @@ class KalmanXY:
         return self.X, self.Y
 
 previous_motor_positions = [0.0, 0.0, 0.0, 0.0]
+previous_rotation_positions = [0.0, 0.0]
 previous_theta = THETA
 previous_back_distance = [0.0, 0]
 previous_left_distance = [0.0, 0]
@@ -874,6 +897,11 @@ def initialize_wheels():
 
     previous_motor_positions = [left_front_motor.position(TURNS), left_back_motor.position(TURNS), right_front_motor.position(TURNS), right_back_motor.position(TURNS)]
     previous_theta = THETA
+
+def initialize_rotation():
+    global previous_rotation_positions
+    rotation_side.set_position(0, TURNS)
+    previous_rotation_positions = [None, rotation_side.position(TURNS)]
 
 def initialize_distances():
     global previous_back_distance, previous_left_distance, previous_right_distance
@@ -972,11 +1000,28 @@ def get_right_distance():
 
 def predict_wheels():
     global previous_motor_positions, previous_theta
+    global previous_rotation_positions
 
     current_motor_positions = [left_front_motor.position(TURNS), left_back_motor.position(TURNS), right_front_motor.position(TURNS), right_back_motor.position(TURNS)]
+    current_rotation_positions = [None, rotation_side.position(TURNS)]
     current_theta = inertial.rotation()
 
-    delta_forward, delta_side = motor_distance_step(current_motor_positions, previous_motor_positions)
+    delta_motor_forward, delta_motor_side = motor_distance_step(current_motor_positions, previous_motor_positions)
+    delta_rotation_forward, delta_rotation_side = tracking_distance_step(current_rotation_positions, previous_rotation_positions)
+    if delta_rotation_forward is not None:
+        delta_forward = delta_rotation_forward
+        # positive right offset means recorded radius is smaller than at center of robot for right turns, so add offset
+        forward_offset = ROTATION_FWD_WHEEL_OFFSET
+    else:
+        delta_forward = delta_motor_forward
+        forward_offset = 0.0
+    if delta_rotation_side is not None:
+        delta_side = delta_rotation_side
+        # positive forward offset means recorded radius is smaller than at center of robot for forward turns, so subtract offset
+        side_offset = -ROTATION_SIDE_WHEEL_OFFSET
+    else:
+        delta_side = delta_motor_side
+        side_offset = 0.0
     delta_theta = current_theta - previous_theta
 
     if delta_theta == 0.0:
@@ -984,8 +1029,8 @@ def predict_wheels():
         delta_local_x = delta_forward
         delta_local_y = delta_side
     else:
-        r_forward = delta_forward / radians(delta_theta) # mm
-        r_side = delta_side / radians(delta_theta) # mm
+        r_forward = forward_offset + delta_forward / radians(delta_theta) # mm
+        r_side = side_offset + delta_side / radians(delta_theta) # mm
 
         to_global_rotation_angle = current_theta + delta_theta / 2.0
         delta_local_x = r_forward * 2.0 * sin(radians(delta_theta) / 2.0)
@@ -995,6 +1040,7 @@ def predict_wheels():
     delta_global_y = delta_local_x * sin(radians(to_global_rotation_angle)) + delta_local_y * cos(radians(to_global_rotation_angle))
 
     previous_motor_positions = current_motor_positions
+    previous_rotation_positions = current_rotation_positions
     previous_theta = current_theta
 
     new_X = X + delta_global_x
@@ -1007,6 +1053,7 @@ def odom_thread():
     global X, Y, THETA, Pxx, Pyy
     THETA = inertial.rotation()
     initialize_wheels()
+    initialize_rotation()
     initialize_distances()
     filter = KalmanXY(X, Y)
 
@@ -1604,8 +1651,8 @@ def user_control():
 
     # place driver control in this while loop
     while True:
-        if add_sample():
-            dumpsamples()
+        # if add_sample():
+        #     dumpsamples()
 
         if not ROBOT_ENABLED:
             wait(100, MSEC)
