@@ -788,24 +788,57 @@ def drive_to_xy(target_x, target_y, strafe=False, speed=100, heading=None, timeo
 def average_back_distance(samples=10):
     BACK_DISTANCE_SEPARATION = 14 * 25.4 # mm
     back1_distance = 0
+    back1_count = 0
+
     back2_distance = 0
+    back2_count = 0
+
     total_distance = 0
+    total_count = 0
+
     total_angle = 0
     angle_valid = True
+    
     for _ in range(samples):
-        if not back_distance1.is_object_detected() or not back_distance2.is_object_detected():
-            angle_valid = False
-        back1_distance += back_distance1.object_distance(MM)
-        back2_distance += back_distance2.object_distance(MM)
-        total_distance += (back_distance1.object_distance(MM) + back_distance2.object_distance(MM)) / 2
+        if back_distance1.is_object_detected():
+            back1_value = back_distance1.object_distance(MM)
+            back1_count += 1
+            back1_distance += back1_value
+        else:
+            back1_value = None
+
+        if back_distance2.is_object_detected():
+            back2_value = back_distance2.object_distance(MM)
+            back2_count += 1
+            back2_distance += back2_value
+        else:
+            back2_value = None
+
+        if back1_value is None or back2_value is None: angle_valid = False
+
+        if back1_value is not None and back2_value is not None:
+            total_count += 1
+            total_distance += (back1_value + back2_value) / 2
+        elif back1_value is not None:
+            total_count += 1
+            total_distance += back1_value
+        elif back2_value is not None:
+            total_count += 1
+            total_distance += back2_value
+
         if angle_valid:
             total_angle += degrees(asin(((back_distance1.object_distance(MM) - back_distance2.object_distance(MM))) / BACK_DISTANCE_SEPARATION))
+
         wait(33, MSEC)
-    back1_distance = back1_distance / samples
-    back2_distance = back2_distance / samples
-    total_distance = total_distance / samples
+    
+    back1_distance = back1_distance / back1_count if back1_count > 0 else 0
+    back2_distance = back2_distance / back2_count if back2_count > 0 else 0
+    
+    total_distance = total_distance / total_count if total_count > 0 else 0
+
     if not angle_valid: total_angle = 0.0
     total_angle = total_angle / samples
+
     print("back1 {} back2 {} back distance {} angle {}".format(back1_distance, back2_distance, total_distance, total_angle))
     return total_distance, total_angle
 
@@ -1534,7 +1567,7 @@ def dumpsamples():
     thread = Thread(dump_samples_thread)
 
 # Default maximum drive and turn rates
-DEFAULT_TURN_MAX = 75.0 # maximum turn rate
+DEFAULT_TURN_MAX = 100.0 # maximum turn rate
 DEFAULT_DRIVE_MAX = 100.0 # maximum drive rate
 # Default ramp control limit
 DEFAULT_MAX_CONTROL_RAMP = 5.0 # percent per timestep (assumed to be 10ms)
@@ -1615,9 +1648,9 @@ def apply_deadband(value, deadband=CONTROLLER_DEADBAND):
     return value
 
 MAX_ROTATION_PER_SECOND = 360
-AUTO_TURN_KP = 0.25
-AUTO_TURN_KD = 0.0
-NO_INPUT_TIMEOUT = 200
+AUTO_TURN_KP = 1.5 # 2.0 # starting 0.25
+AUTO_TURN_KD = 2.5 # 10.0
+NO_INPUT_TIMEOUT = 250
 
 def user_control():
     global ROBOT_ENABLED
@@ -1651,11 +1684,14 @@ def user_control():
     # brain.timer.event(check_lift_hold, 10000)
 
     rotation_set = inertial.rotation(DEGREES)
-    no_input_timeout = NO_INPUT_TIMEOUT
-    all_stop = True
+    no_drive_timeout = NO_INPUT_TIMEOUT / 10 # timeout in ms, want in 10ms loops
+    no_turn_timeout = NO_INPUT_TIMEOUT / 10 # timeout in ms, want in 10ms loops
+    drive_active = False
+    turn_active = False
     anti_tilt_active = False
     anti_tilt_timer = 10
 
+    # ramp control
     last_forward = 0
     last_strafe = 0
     last_turn_error = 0
@@ -1673,7 +1709,7 @@ def user_control():
 
     loop_count = 0
 
-    Thread(log_drivetrain)
+    # Thread(log_drivetrain)
 
     # place driver control in this while loop
     while True:
@@ -1732,29 +1768,45 @@ def user_control():
         #  print("{:.1f}".format(auto_forward))
 
         # Driving vs. coasting logic - cancels any auto corrections after timeout
-        no_input = forward == 0 and turn == 0 and strafe == 0
-        if no_input:
-            no_input_timeout -= 1
-            if no_input_timeout <= 0:
-                left_front_motor.stop(COAST)
-                left_back_motor.stop(COAST)
-                right_front_motor.stop(COAST)
-                right_back_motor.stop(COAST)
-                rotation_set = inertial.rotation(DEGREES)
-                all_stop = True
+        if turn:
+            no_turn_timeout = NO_INPUT_TIMEOUT / 10
         else:
-            no_input_timeout = NO_INPUT_TIMEOUT
+            no_turn_timeout -= 1
+            if no_turn_timeout < 0:
+                no_turn_timeout = 0
+
+        if forward or strafe:
+            no_drive_timeout = NO_INPUT_TIMEOUT / 10
+        else:
+            no_drive_timeout -= 1
+            if no_drive_timeout < 0:
+                no_drive_timeout = 0
+
+        # Hold onto turn or drive commands for a short period after input stops (including ramped inputs)
+        # as inertia will keep robot moving briefly
+        turn_active = turn or no_turn_timeout > 0
+        drive_active = forward or strafe or no_drive_timeout > 0
+
+        no_input = not turn_active and not drive_active
+        if no_input:
+            left_front_motor.stop(COAST)
+            left_back_motor.stop(COAST)
+            right_front_motor.stop(COAST)
+            right_back_motor.stop(COAST)
+            rotation_set = inertial.rotation(DEGREES)
+            all_stop = True
+        else:
             all_stop = False
 
         # Heading hold
         # rotation_set += (raw_turn / 100) * (MAX_ROTATION_PER_SECOND / 100)
-        # Case 1: Active turn input
-        if turn != 0:
+        # Case 1: Active turn input - overrides drive active
+        if turn_active:
             rotation_set = inertial.rotation(DEGREES)
             auto_turn = 0
             last_turn_error = 0
         # Case 2: Forward or strafe still active
-        elif robot_config.enable_heading_hold and (forward != 0 or strafe != 0):
+        elif robot_config.enable_heading_hold and drive_active: # (forward != 0 or strafe != 0):
             turn_error = rotation_set - inertial.rotation(DEGREES)
             auto_turn = turn_error * AUTO_TURN_KP + (turn_error - last_turn_error) * AUTO_TURN_KD
             last_turn_error = turn_error
