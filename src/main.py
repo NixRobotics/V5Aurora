@@ -13,7 +13,7 @@
 
 # Library imports
 from vex import *
-from math import radians, degrees, cos, acos, sin, sqrt, pi
+from math import radians, degrees, cos, asin, sin, sqrt, pi
 import json
 
 from v5pythonlibrary import * # Loaded from SDCard
@@ -57,6 +57,7 @@ claw_distance = Distance(Ports.PORT2)
 
 HIDDEN_PERIMITER = 15 #mm
 
+# at 592 - back1 reads 595.3, back2 reads 590.9
 BACK_DISTANCE_COMPENSATION = 1500 / 1525
 BACK_DISTANCE_FROM_BACK = 66 # mm
 back_distance1 = Distance(Ports.PORT4)
@@ -786,15 +787,26 @@ def drive_to_xy(target_x, target_y, strafe=False, speed=100, heading=None, timeo
 # Forward travel
 def average_back_distance(samples=10):
     BACK_DISTANCE_SEPARATION = 14 * 25.4 # mm
+    back1_distance = 0
+    back2_distance = 0
     total_distance = 0
     total_angle = 0
+    angle_valid = True
     for _ in range(samples):
+        if not back_distance1.is_object_detected() or not back_distance2.is_object_detected():
+            angle_valid = False
+        back1_distance += back_distance1.object_distance(MM)
+        back2_distance += back_distance2.object_distance(MM)
         total_distance += (back_distance1.object_distance(MM) + back_distance2.object_distance(MM)) / 2
-        total_angle += degrees(acos(((back_distance1.object_distance(MM) - back_distance2.object_distance(MM))) / BACK_DISTANCE_SEPARATION))
+        if angle_valid:
+            total_angle += degrees(asin(((back_distance1.object_distance(MM) - back_distance2.object_distance(MM))) / BACK_DISTANCE_SEPARATION))
         wait(33, MSEC)
+    back1_distance = back1_distance / samples
+    back2_distance = back2_distance / samples
     total_distance = total_distance / samples
+    if not angle_valid: total_angle = 0.0
     total_angle = total_angle / samples
-    print("back distance {} angle {}".format(total_distance, total_angle))
+    print("back1 {} back2 {} back distance {} angle {}".format(back1_distance, back2_distance, total_distance, total_angle))
     return total_distance, total_angle
 
 def motor_distance_step(current, previous):
@@ -1106,7 +1118,7 @@ def log_drivetrain():
     # Run ramp test
 
     TOTAL_SAMPLES = 400
-    PRINT_DELAY = 50 # ms between samples. Set to around 250 for wireless or 50 for USB
+    PRINT_DELAY = 333 # ms between samples. Set to around 250 for wireless or 50 for USB
 
     for i in range(TOTAL_SAMPLES):
 
@@ -1619,6 +1631,9 @@ def user_control():
 
     Thread(initialize_claw)
 
+    starting_distance, starting_angle = average_back_distance()
+    print("Back distance: {}, Back angle: {}".format(starting_distance, starting_angle))
+
     brain.screen.clear_screen()
     brain.screen.print("user control")
 
@@ -1657,6 +1672,8 @@ def user_control():
     ROBOT_ENABLED = True
 
     loop_count = 0
+
+    Thread(log_drivetrain)
 
     # place driver control in this while loop
     while True:
@@ -1752,10 +1769,10 @@ def user_control():
         combined_turn = turn + auto_turn
         
         if not all_stop:
-            left_power = LEFT_POWER_SCALING
-            right_power = RIGHT_POWER_SCALING
-            front_power = FRONT_POWER_SCALING
-            back_power = BACK_POWER_SCALING
+            left_power = 1.0 # LEFT_POWER_SCALING
+            right_power = 1.0 # RIGHT_POWER_SCALING
+            front_power = 1.0 # FRONT_POWER_SCALING
+            back_power = 1.0 # BACK_POWER_SCALING
 
             # mixing the combined forward, strafe, and turn inputs to calculate individual motor speeds
             left_front_speed = combined_forward * right_power + combined_turn + combined_strafe * front_power
