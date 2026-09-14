@@ -13,7 +13,7 @@
 
 # Library imports
 from vex import *
-from math import radians, cos, sin, sqrt, pi
+from math import radians, degrees, cos, acos, sin, sqrt, pi
 import json
 
 from v5pythonlibrary import * # Loaded from SDCard
@@ -106,137 +106,139 @@ QUIET_MODE = False
 ### ROBOT CONFIGURATION
 # ------------------------------------------------------------ #
 
-ENABLE_HEADING_HOLD = False
-ENABLE_FIELD_ORIENT = False
-ENABLE_AUTO_CLAW_DOWN = False
-ENABLE_AUTO_CLAW_MID1 = False
-ENABLE_SLOW_RAMP = False
+class RobotConfiguration:
+    def __init__(self):
+        self.enable_heading_hold = False
+        self.enable_field_orient = False
+        self.enable_auto_claw_down = False
+        self.enable_auto_claw_mid1 = False
+        self.enable_slow_ramp = False
 
-def save_settings():
-    print("saving settings")
-    settings = {
-        "heading_hold": ENABLE_HEADING_HOLD,
-        "field_orient": ENABLE_FIELD_ORIENT,
-        "slow_ramp": ENABLE_SLOW_RAMP,
-        "auto_claw_down": ENABLE_AUTO_CLAW_DOWN,
-        "auto_claw_mid1": ENABLE_AUTO_CLAW_MID1
-    }
-    print("settings to save:", settings)
-    with open("settings.json", "w") as f:
-        json.dump(settings, f)
+    def save_settings(self):
+        print("saving settings")
+        settings = {
+            "heading_hold": self.enable_heading_hold,
+            "field_orient": self.enable_field_orient,
+            "slow_ramp": self.enable_slow_ramp,
+            "auto_claw_down": self.enable_auto_claw_down,
+            "auto_claw_mid1": self.enable_auto_claw_mid1
+        }
+        print("settings to save:", settings)
+        with open("settings.json", "w") as f:
+            json.dump(settings, f)
 
-def load_settings():
-    global ENABLE_HEADING_HOLD, ENABLE_FIELD_ORIENT, ENABLE_SLOW_RAMP, ENABLE_AUTO_CLAW_DOWN, ENABLE_AUTO_CLAW_MID1
-    print("loading settings")
-    try:
-        with open("settings.json", "r") as f:
-            settings = json.load(f)
-            print("settings loaded:", settings)
-            ENABLE_HEADING_HOLD = settings.get("heading_hold", ENABLE_HEADING_HOLD)
-            ENABLE_FIELD_ORIENT = settings.get("field_orient", ENABLE_FIELD_ORIENT)
-            ENABLE_SLOW_RAMP = settings.get("slow_ramp", ENABLE_SLOW_RAMP)
-            ENABLE_AUTO_CLAW_DOWN = settings.get("auto_claw_down", ENABLE_AUTO_CLAW_DOWN)
-            ENABLE_AUTO_CLAW_MID1 = settings.get("auto_claw_mid1", ENABLE_AUTO_CLAW_MID1)
-    except:
-        print("settings file not found, saving default settings")
-        save_settings()
-    print("heading_hold:", ENABLE_HEADING_HOLD)
-    print("field_orient:", ENABLE_FIELD_ORIENT)
-    print("slow_ramp:", ENABLE_SLOW_RAMP)
-    print("auto_claw_down:", ENABLE_AUTO_CLAW_DOWN)
-    print("auto_claw_mid1:", ENABLE_AUTO_CLAW_MID1)
+    def load_settings(self):
+        print("loading settings")
+        try:
+            with open("settings.json", "r") as f:
+                settings = json.load(f)
+                print("settings loaded:", settings)
+                self.enable_heading_hold = settings.get("heading_hold", self.enable_heading_hold)
+                self.enable_field_orient = settings.get("field_orient", self.enable_field_orient)
+                self.enable_slow_ramp = settings.get("slow_ramp", self.enable_slow_ramp)
+                self.enable_auto_claw_down = settings.get("auto_claw_down", self.enable_auto_claw_down)
+                self.enable_auto_claw_mid1 = settings.get("auto_claw_mid1", self.enable_auto_claw_mid1)
+        except:
+            print("settings file not found, saving default settings")
+            self.save_settings()
+        print("heading_hold:", self.enable_heading_hold)
+        print("field_orient:", self.enable_field_orient)
+        print("slow_ramp:", self.enable_slow_ramp)
+        print("auto_claw_down:", self.enable_auto_claw_down)
+        print("auto_claw_mid1:", self.enable_auto_claw_mid1)
 
-def configuration_UI():
-    global ROBOT_ENABLED
-    global ENABLE_HEADING_HOLD, ENABLE_FIELD_ORIENT, ENABLE_SLOW_RAMP, ENABLE_AUTO_CLAW_DOWN, ENABLE_AUTO_CLAW_MID1
-    ROBOT_ENABLED = False
-    if motor_monitor is not None: motor_monitor.mute(True)
-    # Use up and down arrows to select different menu items on screen
-    # Left and right arrows to change the value of the selected menu item
-    # Pressing A confirms the selected option
-    # Changes saved to SDCard and read upon next initialization
-    # Current options are:
-    # - Enable / Disable Heading Hold
-    # - Enable / Disable Field Orient
-    # - Enable / Disable Auto Claw Down
-    # - Enable / Disable Auto Claw Mid1
+    def configuration_UI(self):
+        global ROBOT_ENABLED
+        ROBOT_ENABLED = False
+        if motor_monitor is not None: motor_monitor.mute(True)
+        # Use up and down arrows to select different menu items on screen
+        # Left and right arrows to change the value of the selected menu item
+        # Pressing A confirms the selected option
+        # Changes saved to SDCard and read upon next initialization
+        # Current options are:
+        # - Enable / Disable Heading Hold
+        # - Enable / Disable Field Orient
+        # - Enable / Disable Auto Claw Down
+        # - Enable / Disable Auto Claw Mid1
 
-    brain.screen.clear_screen()
-    brain.screen.set_cursor(1, 1)
-    brain.screen.print("Robot Configuration")
-    brain.screen.new_line()
-    brain.screen.print("Use arrows to navigate")
-    brain.screen.new_line()
-    brain.screen.print("Hold A to save and exit")
-    brain.screen.new_line()
-    brain.screen.print("Press B to discard changesand exit")
-    brain.screen.new_line()
-    brain.screen.new_line()
+        brain.screen.clear_screen()
+        brain.screen.set_cursor(1, 1)
+        brain.screen.print("Robot Configuration")
+        brain.screen.new_line()
+        brain.screen.print("Use arrows to navigate")
+        brain.screen.new_line()
+        brain.screen.print("Hold A to save and exit")
+        brain.screen.new_line()
+        brain.screen.print("Press B to discard changesand exit")
+        brain.screen.new_line()
+        brain.screen.new_line()
 
-    menu_data = [
-        {"name": "Heading Hold", "enabled": ENABLE_HEADING_HOLD},
-        {"name": "Field Orient", "enabled": ENABLE_FIELD_ORIENT},
-        {"name": "Slow Ramp", "enabled": ENABLE_SLOW_RAMP},
-        {"name": "Auto Claw Down", "enabled": ENABLE_AUTO_CLAW_DOWN},
-        {"name": "Auto Claw Mid1", "enabled": ENABLE_AUTO_CLAW_MID1}
-    ]
+        menu_data = [
+            {"name": "Heading Hold", "enabled": self.enable_heading_hold},
+            {"name": "Field Orient", "enabled": self.enable_field_orient},
+            {"name": "Slow Ramp", "enabled": self.enable_slow_ramp},
+            {"name": "Auto Claw Down", "enabled": self.enable_auto_claw_down},
+            {"name": "Auto Claw Mid1", "enabled": self.enable_auto_claw_mid1}
+        ]
 
-    menu_selection = 0
-    brain.screen.print("[{}] {}".format("X" if menu_data[menu_selection]["enabled"] else " ", menu_data[menu_selection]["name"]))
+        menu_selection = 0
+        brain.screen.print("[{}] {}".format("X" if menu_data[menu_selection]["enabled"] else " ", menu_data[menu_selection]["name"]))
 
-    # Wait for user input to navigate the menu
-    pressing_timer = 0
-    options_changed = False
-    while True:
-        if controller_1.buttonA.pressing():
-            if pressing_timer > 2000:
+        # Wait for user input to navigate the menu
+        pressing_timer = 0
+        options_changed = False
+        while True:
+            if controller_1.buttonA.pressing():
+                if pressing_timer > 2000:
+                    brain.screen.clear_screen()
+                    brain.screen.set_cursor(1, 1)
+                    brain.screen.print("Saving settings...")
+                    break
+                else:
+                    pressing_timer += 20
+            else:
+                pressing_timer = 0
+
+            if controller_1.buttonB.pressing():
+                # Discard changes and exit
                 brain.screen.clear_screen()
                 brain.screen.set_cursor(1, 1)
-                brain.screen.print("Saving settings...")
-                break
-            else:
-                pressing_timer += 20
-        else:
-            pressing_timer = 0
+                brain.screen.print("Discarding changes...")
+                if motor_monitor is not None:
+                    motor_monitor.mute(False)
+                    motor_monitor.refresh()
+                ROBOT_ENABLED = True
+                return
+            if controller_1.buttonDown.pressing():
+                menu_selection = (menu_selection + 1) % len(menu_data)
+                wait(200, MSEC)  # Debounce delay
+                options_changed = True
+            if controller_1.buttonRight.pressing():
+                menu_data[menu_selection]["enabled"] = not menu_data[menu_selection]["enabled"]
+                options_changed = True
+                wait(200, MSEC)  # Debounce delay
+            if options_changed:
+                options_changed = False
+                brain.screen.set_cursor(6, 1)
+                brain.screen.print("[{}] {}          ".format("X" if menu_data[menu_selection]["enabled"] else " ", menu_data[menu_selection]["name"]))
+            wait(20, MSEC)
 
-        if controller_1.buttonB.pressing():
-            # Discard changes and exit
-            brain.screen.clear_screen()
-            brain.screen.set_cursor(1, 1)
-            brain.screen.print("Discarding changes...")
-            if motor_monitor is not None:
-                motor_monitor.mute(False)
-                motor_monitor.refresh()
-            ROBOT_ENABLED = True
-            return
-        if controller_1.buttonDown.pressing():
-            menu_selection = (menu_selection + 1) % len(menu_data)
-            wait(200, MSEC)  # Debounce delay
-            options_changed = True
-        if controller_1.buttonRight.pressing():
-            menu_data[menu_selection]["enabled"] = not menu_data[menu_selection]["enabled"]
-            options_changed = True
-            wait(200, MSEC)  # Debounce delay
-        if options_changed:
-            options_changed = False
-            brain.screen.set_cursor(6, 1)
-            brain.screen.print("[{}] {}          ".format("X" if menu_data[menu_selection]["enabled"] else " ", menu_data[menu_selection]["name"]))
-        wait(20, MSEC)
+        self.enable_heading_hold = menu_data[0]["enabled"]
+        self.enable_field_orient = menu_data[1]["enabled"]
+        self.enable_slow_ramp = menu_data[2]["enabled"]
+        self.enable_auto_claw_down = menu_data[3]["enabled"]
+        self.enable_auto_claw_mid1 = menu_data[4]["enabled"]
 
-    ENABLE_HEADING_HOLD = menu_data[0]["enabled"]
-    ENABLE_FIELD_ORIENT = menu_data[1]["enabled"]
-    ENABLE_SLOW_RAMP = menu_data[2]["enabled"]
-    ENABLE_AUTO_CLAW_DOWN = menu_data[3]["enabled"]
-    ENABLE_AUTO_CLAW_MID1 = menu_data[4]["enabled"]
+        brain.screen.new_line()
+        self.save_settings()
+        brain.screen.print("Settings saved!")
+        wait(1000, MSEC)
+        ROBOT_ENABLED = True
+        if motor_monitor is not None:
+            motor_monitor.mute(False)
+            motor_monitor.refresh()
 
-    brain.screen.new_line()
-    save_settings()
-    brain.screen.print("Settings saved!")
-    wait(1000, MSEC)
-    ROBOT_ENABLED = True
-    if motor_monitor is not None:
-        motor_monitor.mute(False)
-        motor_monitor.refresh()
+robot_config = RobotConfiguration()
 
 ### DRIVETRAIN UTILITIES
 
@@ -385,7 +387,7 @@ def initialize_claw():
     claw_arm_motor2.set_position(0, DEGREES)
     claw_arm_motor1.stop(HOLD)
     claw_arm_motor2.stop(HOLD)
-    CLAW_INITALIZED = True
+    CLAW_INITIALIZED = True
 
 CLAW_ARM_COMMAND_NONE = 0
 CLAW_ARM_COMMAND_RAISE = 1
@@ -472,11 +474,11 @@ def auto_claw_thread():
         current_time = brain.timer.time(SECONDS)
         claw_ready = (current_time - claw_open_time) > 1
         if ROBOT_ENABLED and claw_ready and claw_is_open() and lift_height(True) < 1:
-            if (ENABLE_AUTO_CLAW_DOWN and CLAW_ARM_POSITION == CLAW_ARM_DOWN):
+            if (robot_config.enable_auto_claw_down and CLAW_ARM_POSITION == CLAW_ARM_DOWN):
                 if (claw_distance.object_distance() < 70):
                     close_claw()
                     wait(1, SECONDS)
-            elif (ENABLE_AUTO_CLAW_MID1 and CLAW_ARM_POSITION == CLAW_ARM_MID1):
+            elif (robot_config.enable_auto_claw_mid1 and CLAW_ARM_POSITION == CLAW_ARM_MID1):
                 if (claw_distance.object_distance() < 70):
                     close_claw()
                     wait(1, SECONDS)
@@ -783,11 +785,17 @@ def drive_to_xy(target_x, target_y, strafe=False, speed=100, heading=None, timeo
 # Distance sensor to back = 66mm
 # Forward travel
 def average_back_distance(samples=10):
+    BACK_DISTANCE_SEPARATION = 14 * 25.4 # mm
     total_distance = 0
+    total_angle = 0
     for _ in range(samples):
         total_distance += (back_distance1.object_distance(MM) + back_distance2.object_distance(MM)) / 2
+        total_angle += degrees(acos(((back_distance1.object_distance(MM) - back_distance2.object_distance(MM))) / BACK_DISTANCE_SEPARATION))
         wait(33, MSEC)
-    return total_distance / samples
+    total_distance = total_distance / samples
+    total_angle = total_angle / samples
+    print("back distance {} angle {}".format(total_distance, total_angle))
+    return total_distance, total_angle
 
 def motor_distance_step(current, previous):
     lf = current[0] - previous[0]
@@ -1205,9 +1213,10 @@ def autonomous_calibration():
     Thread(log_drivetrain)
     # Thread(log_odom)
     # place automonous code here
-    # starting_distance = average_back_distance()
+    starting_distance, starting_angle = average_back_distance()
     #print("Back distance: {}".format(starting_distance))
     wait(100, MSEC)
+    return
 
     # drive_for(1200, False, 50, heading = 0)
     # wait(100, MSEC)
@@ -1232,8 +1241,8 @@ def autonomous_calibration():
 def autonomous_skills():
     # Thread(odom_thread)
     # place automonous code here
-    # while not CLAW_INITIALIZED:
-        # wait(10, MSEC)
+    while not CLAW_INITIALIZED:
+        wait(10, MSEC)
     wait(1, SECONDS)
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID1)
     wait(500, MSEC)
@@ -1280,7 +1289,7 @@ def autonomous_left():
     drive_for(100, False, 50, heading = 0)
     command_lift(3)
     open_claw()
-    wall_distance = average_back_distance() - BACK_DISTANCE_FROM_BACK
+    wall_distance = average_back_distance()[0] - BACK_DISTANCE_FROM_BACK
     print("Wall distance: {}".format(wall_distance))
     target_distance = 120
     reverse_by = target_distance - wall_distance
@@ -1328,7 +1337,7 @@ def autonomous_right():
     drive_for(100, False, 50, heading = 0)
     command_lift(3)
     open_claw()
-    wall_distance = average_back_distance() - BACK_DISTANCE_FROM_BACK
+    wall_distance = average_back_distance()[0] - BACK_DISTANCE_FROM_BACK
     target_distance = 120 
     reverse_by = target_distance - wall_distance
     drive_for(reverse_by, False, 50, heading = 0)
@@ -1389,7 +1398,7 @@ def pre_autonomous():
     brain.screen.clear_screen()
     brain.screen.print("pre auton code")
     inertial.calibrate()
-    load_settings()
+    robot_config.load_settings()
     while inertial.is_calibrating():
         wait(100, MSEC)
     for i in range(10):
@@ -1481,7 +1490,7 @@ def OnControlButtonUpPressed():
             return
         pressed_counter += 1
     # Button has been held for 30 cycles (3 seconds)
-    configuration_UI()
+    robot_config.configuration_UI()
 
 samples = []
 
@@ -1664,7 +1673,7 @@ def user_control():
         raw_detwitch = apply_deadband(controller_1.axis2.position())
 
         # Remap from field to robot
-        FIELD_ORIENTED = ENABLE_FIELD_ORIENT
+        FIELD_ORIENTED = robot_config.enable_field_orient
         if FIELD_ORIENTED:
             robot_forward = raw_forward * cos(radians(inertial.rotation(DEGREES))) + raw_strafe * sin(radians(inertial.rotation(DEGREES)))
             robot_strafe = -raw_forward * sin(radians(inertial.rotation(DEGREES))) + raw_strafe * cos(radians(inertial.rotation(DEGREES)))
@@ -1675,7 +1684,7 @@ def user_control():
         raw_forward = robot_forward
         raw_strafe = robot_strafe
 
-        MAX_RANP = 2 if ENABLE_SLOW_RAMP else 3
+        MAX_RANP = 2 if robot_config.enable_slow_ramp else 3
         MIN_RAMP = 1
         RAMP_RANGE = MAX_RANP - MIN_RAMP
 
@@ -1728,7 +1737,7 @@ def user_control():
             auto_turn = 0
             last_turn_error = 0
         # Case 2: Forward or strafe still active
-        elif ENABLE_HEADING_HOLD and (forward != 0 or strafe != 0):
+        elif robot_config.enable_heading_hold and (forward != 0 or strafe != 0):
             turn_error = rotation_set - inertial.rotation(DEGREES)
             auto_turn = turn_error * AUTO_TURN_KP + (turn_error - last_turn_error) * AUTO_TURN_KD
             last_turn_error = turn_error
