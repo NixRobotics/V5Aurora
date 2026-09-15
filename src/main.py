@@ -66,6 +66,7 @@ back_distance2 = Distance(Ports.PORT9)
 ROBOT_WIDTH = 15 * 25.4 # (mm)
 ROBOT_LENGTH = 185 * 2 # (mm) 185 measured from back wall to center line
 
+LEFT_DISTANCE_DISTABLE = True
 LEFT_DISTANCE_COMPENSATION = 1.0
 LEFT_DISTANCE_FROM_LEFT = 10 # mm
 left_distance = Distance(Ports.PORT6)
@@ -79,8 +80,8 @@ ROTATION_SIDE_WHEEL_OFFSET = 2.5 * 25.4 # mm (forward)
 rotation_side = Rotation(Ports.PORT18, True)
 
 ROTATION_FWD_WHEEL_SIZE = 2 * 25.4 * pi # mm circumference
-ROTATION_FWD_WHEEL_OFFSET = 0.0 * 25.4 # mm (forward)
-rotation_fwd = None
+ROTATION_FWD_WHEEL_OFFSET = 1.0 * 25.4 # mm (right)
+rotation_fwd = Rotation(Ports.PORT20, False)
 
 claw_solenoid = DigitalOut(brain.three_wire_port.a)
 toggle_solenoid = DigitalOut(brain.three_wire_port.h)
@@ -998,6 +999,9 @@ def get_back_distance():
 def get_left_distance():
     global previous_left_distance
 
+    if LEFT_DISTANCE_DISTABLE:
+        return None
+
     if abs(THETA) > 5:
         return None
 
@@ -1068,6 +1072,7 @@ def predict_wheels():
     else:
         delta_forward = delta_motor_forward
         forward_offset = 0.0
+
     if delta_rotation_side is not None:
         delta_side = delta_rotation_side
         # positive forward offset means recorded radius is smaller than at center of robot for forward turns, so subtract offset
@@ -1255,17 +1260,28 @@ def log_odom():
 
 def autonomous_calibration():
     # Thread(odom_thread)
-    Thread(log_drivetrain)
+    # Thread(log_drivetrain)
     # Thread(log_odom)
     # place automonous code here
     starting_distance, starting_angle = average_back_distance()
     #print("Back distance: {}".format(starting_distance))
     wait(100, MSEC)
-    return
 
     # drive_for(1200, False, 50, heading = 0)
     # wait(100, MSEC)
     # return
+
+    drive_to_xy(350.0, 2750.0, False, 50, heading = 0)
+
+    while True:
+        drive_to_xy(350.0, 2750 + 300.0, True, 50, heading = 0)
+        #wait(500, MSEC)
+        drive_to_xy(350.0 + 100.0, 2750 + 300.0, False, 50, heading = 0)
+        #wait(500, MSEC)
+        drive_to_xy(350.0 + 100.0, 2750 - 300.0, True, 50, heading = 0)
+        #wait(500, MSEC)
+        drive_to_xy(350.0, 2750 - 300.0, False, 50, heading = 0)
+        #wait(500, MSEC)
 
     while True:
         drive_to_xy(900.0, 1800.0, False, 50, heading = 0)
