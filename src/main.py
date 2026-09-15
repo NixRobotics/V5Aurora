@@ -66,7 +66,7 @@ back_distance2 = Distance(Ports.PORT9)
 ROBOT_WIDTH = 15 * 25.4 # (mm)
 ROBOT_LENGTH = 185 * 2 # (mm) 185 measured from back wall to center line
 
-LEFT_DISTANCE_DISTABLE = True
+LEFT_DISTANCE_DISTABLE = False
 LEFT_DISTANCE_COMPENSATION = 1.0
 LEFT_DISTANCE_FROM_LEFT = 10 # mm
 left_distance = Distance(Ports.PORT6)
@@ -95,6 +95,9 @@ all_motor_names = ["LEFT_FRONT", "LEFT_BACK",
                    "ARM_LEFT", "ARM_RIGHT", "LIFT"]
 
 motor_monitor = None
+
+all_sensors = [inertial, claw_distance, back_distance1, back_distance2, left_distance, right_distance, rotation_side, rotation_fwd]
+all_sensors_names = ["INERTIAL", "CLAW_DISTANCE", "BACK_DISTANCE1", "BACK_DISTANCE2", "LEFT_DISTANCE", "RIGHT_DISTANCE", "ROTATION_SIDE", "ROTATION_FWD"]
 
 # ------------------------------------------------------------ #
 ### ROBOT STATE
@@ -361,8 +364,8 @@ CLAW_INITIALIZED = False
 CLAW_ARM_RUNNING = False
 CLAW_ARM_UP_DEGREES = 160 * 3
 CLAW_ARM_MID3_DEGREES = 30 * 3 # was 24.5 * 3
-CLAW_ARM_MID2_DEGREES = 18 * 3 # was 24.5 * 3
-CLAW_ARM_MID1_DEGREES = 13 * 3 # was 18 * 3
+CLAW_ARM_MID2_DEGREES = 24.5 * 3 # was 24.5 * 3
+CLAW_ARM_MID1_DEGREES = 20 * 3 # was 18 * 3
 CLAW_ARM_DOWN_DEGREES = 0 * 3
 CLAW_ARM_DOWN = 0
 CLAW_ARM_MID1 = 1
@@ -370,20 +373,20 @@ CLAW_ARM_MID2 = 2
 CLAW_ARM_MID3 = 3
 CLAW_ARM_UP = 4
 CLAW_ARM_POSITION = CLAW_ARM_DOWN  # 0 = down, 1 = mid1, 2 = mid2, 3 = mid3, 4 = up
-CLAW_ARM_TIMEOUT = 2.0
+CLAW_ARM_TIMEOUT = 3.0
 CLAW_ARM_SPEED = 50
 
 def initialize_claw():
     global CLAW_INITIALIZED
     if CLAW_INITIALIZED: return
-    claw_arm_motor1.set_velocity(20, PERCENT)
+    claw_arm_motor1.set_velocity(30, PERCENT)
     claw_arm_motor1.set_stopping(HOLD)
-    claw_arm_motor1.set_timeout(CLAW_ARM_TIMEOUT, SECONDS)
-    claw_arm_motor2.set_velocity(20, PERCENT)
+    claw_arm_motor1.set_timeout(2, SECONDS)
+    claw_arm_motor2.set_velocity(30, PERCENT)
     claw_arm_motor2.set_stopping(HOLD)
-    claw_arm_motor2.set_timeout(1, SECONDS)
-    claw_arm_motor1.spin_to_position(-20, DEGREES, wait=False)
-    claw_arm_motor2.spin_to_position(-20, DEGREES)
+    claw_arm_motor2.set_timeout(2, SECONDS)
+    claw_arm_motor1.spin_to_position(-30, DEGREES, wait=False)
+    claw_arm_motor2.spin_to_position(-30, DEGREES)
     wait(0.25, SECONDS)
     claw_arm_motor1.set_position(0, DEGREES)
     claw_arm_motor2.set_position(0, DEGREES)
@@ -426,7 +429,7 @@ def run_claw_arm(command, target_position=-1):
     claw_target_degrees = target_list[claw_target_position]
 
     CLAW_ARM_RUNNING = True
-    starting_position = claw_arm_motor1.position(DEGREES)
+    starting_position = (claw_arm_motor1.position(DEGREES), claw_arm_motor2.position(DEGREES))
     claw_arm_motor1.set_velocity(arm_speed, PERCENT)
     claw_arm_motor1.set_stopping(HOLD)
     claw_arm_motor1.set_timeout(CLAW_ARM_TIMEOUT, SECONDS)
@@ -435,13 +438,13 @@ def run_claw_arm(command, target_position=-1):
     claw_arm_motor2.set_timeout(CLAW_ARM_TIMEOUT, SECONDS)
     claw_arm_motor1.spin_to_position(claw_target_degrees, DEGREES, wait=False)
     claw_arm_motor2.spin_to_position(claw_target_degrees, DEGREES)
+    wait(333, MSEC)
     claw_arm_motor1.stop()
     claw_arm_motor2.stop()
     CLAW_ARM_RUNNING = False
     CLAW_ARM_POSITION = claw_target_position
-    ending_position = claw_arm_motor1.position(DEGREES)
-    total_links_moved = (ending_position - starting_position) / LIFT_DEGREES_PER_LINK
-    print("Claw from {} to {}, total {} links".format(starting_position, ending_position, total_links_moved))
+    ending_position = (claw_arm_motor1.position(DEGREES), claw_arm_motor2.position(DEGREES))
+    print("Claw from {} to {}".format(starting_position, ending_position))
 
 def raise_claw_arm():
     run_claw_arm(CLAW_ARM_COMMAND_RAISE)
@@ -449,7 +452,7 @@ def raise_claw_arm():
 def lower_claw_arm():
     run_claw_arm(CLAW_ARM_COMMAND_LOWER)
 
-def move_claw_arm_to_position(target_position):
+def move_claw_arm_to_position(target_position, unused = 0):
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, target_position)
 
 CLAW_OPEN = 1
@@ -827,8 +830,15 @@ def average_back_distance(samples=10):
             total_count += 1
             total_distance += back2_value
 
-        if angle_valid:
-            total_angle += degrees(asin(((back_distance1.object_distance(MM) - back_distance2.object_distance(MM))) / BACK_DISTANCE_SEPARATION))
+        if angle_valid and back1_value is not None and back2_value is not None:
+            try:
+                total_angle += degrees(asin(((back1_value - back2_value)) / BACK_DISTANCE_SEPARATION))
+            except:
+                #brain.screen.clear_screen(Color.RED)
+                #brain.screen.set_cursor(1, 1)
+                #brain.screen.print("Error back1={} back2={}\n".format(back1_value, back2_value))
+                #print("Error back1={} back2={}\n".format(back1_value, back2_value))
+                angle_valid = False
 
         wait(33, MSEC)
     
@@ -1271,17 +1281,18 @@ def autonomous_calibration():
     # wait(100, MSEC)
     # return
 
-    drive_to_xy(350.0, 2750.0, False, 50, heading = 0)
+    if False:
+        drive_to_xy(350.0, 2750.0, False, 50, heading = 0)
 
-    while True:
-        drive_to_xy(350.0, 2750 + 300.0, True, 50, heading = 0)
-        #wait(500, MSEC)
-        drive_to_xy(350.0 + 100.0, 2750 + 300.0, False, 50, heading = 0)
-        #wait(500, MSEC)
-        drive_to_xy(350.0 + 100.0, 2750 - 300.0, True, 50, heading = 0)
-        #wait(500, MSEC)
-        drive_to_xy(350.0, 2750 - 300.0, False, 50, heading = 0)
-        #wait(500, MSEC)
+        while True:
+            drive_to_xy(350.0, 2750 + 300.0, True, 50, heading = 0)
+            #wait(500, MSEC)
+            drive_to_xy(350.0 + 100.0, 2750 + 300.0, False, 50, heading = 0)
+            #wait(500, MSEC)
+            drive_to_xy(350.0 + 100.0, 2750 - 300.0, True, 50, heading = 0)
+            #wait(500, MSEC)
+            drive_to_xy(350.0, 2750 - 300.0, False, 50, heading = 0)
+            #wait(500, MSEC)
 
     while True:
         drive_to_xy(900.0, 1800.0, False, 50, heading = 0)
@@ -1432,8 +1443,6 @@ def autonomous():
     while not ROBOT_INITIALIZED:
         wait(100, MSEC)
     ROBOT_ENABLED = True
-    brain.screen.clear_screen()
-    brain.screen.print("autonomous code")
     Thread(initialize_claw)
 
     if CALIBRATION:
@@ -1450,6 +1459,23 @@ def autonomous():
 
 pitch_offset = 0.0
 
+def connection_checker():
+    while True:
+        cleared = False
+        for sensor, name in zip(all_sensors, all_sensors_names):
+            if not sensor.installed():
+                if not cleared:
+                    brain.screen.clear_screen(Color.RED)
+                    cleared = True
+                brain.screen.print("Sensor {} is not connected!\n".format(name))
+        for motor, name in zip(all_motors, all_motor_names):
+            if not motor.installed():
+                if not cleared:
+                    brain.screen.clear_screen(Color.RED)
+                    cleared = True
+                brain.screen.print("Motor {} is not connected!\n".format(name))
+        wait(1000, MSEC)
+
 def pre_autonomous():
     global ROBOT_INITIALIZED
     global ALLIANCE_COLOR, AUTON_SEQUENCE
@@ -1462,6 +1488,9 @@ def pre_autonomous():
     robot_config.load_settings()
     while inertial.is_calibrating():
         wait(100, MSEC)
+
+    Thread(connection_checker)
+
     for i in range(10):
         pitch_offset += inertial.orientation(OrientationType.ROLL, DEGREES)
         wait(10, MSEC)
@@ -1517,16 +1546,34 @@ def OnLowerClawPressed(): # L2
         claw_arm_motor1.stop(HOLD)
         claw_arm_motor2.stop(HOLD)
         return
-    thread = Thread(lower_claw_arm)
 
-def OnRaiseClawPressed():
+    pressed_counter = 0
+    while pressed_counter < 5: # about 1/4 second
+        wait(50, MSEC)
+        if not controller_1.buttonL2.pressing():
+            thread = Thread(lower_claw_arm)
+            return
+        pressed_counter += 1
+
+    thread = Thread(move_claw_arm_to_position, (CLAW_ARM_DOWN, 0))
+
+def OnRaiseClawPressed(): # L1
     if not ROBOT_ENABLED: return
     if CLAW_ARM_RUNNING:
         print("Was Running")
         claw_arm_motor1.stop(HOLD)
         claw_arm_motor2.stop(HOLD)
         return
-    thread = Thread(raise_claw_arm)
+
+    pressed_counter = 0
+    while pressed_counter < 5: # about 1/4 second
+        wait(50, MSEC)
+        if not controller_1.buttonL1.pressing():
+            thread = Thread(raise_claw_arm)
+            return
+        pressed_counter += 1
+
+    thread = Thread(move_claw_arm_to_position, (CLAW_ARM_UP, 0))
 
 def OnControlButtonAPressed():
     if not ROBOT_ENABLED: return
@@ -1671,8 +1718,6 @@ NO_INPUT_TIMEOUT = 250
 def user_control():
     global ROBOT_ENABLED
 
-    brain.screen.clear_screen()
-    brain.screen.print("driver control")
     # place driver control in this while loop
     last_fwd = 0 
     while not ROBOT_INITIALIZED:
@@ -1682,9 +1727,6 @@ def user_control():
 
     starting_distance, starting_angle = average_back_distance()
     print("Back distance: {}, Back angle: {}".format(starting_distance, starting_angle))
-
-    brain.screen.clear_screen()
-    brain.screen.print("user control")
 
     controller_1.buttonA.pressed(OnControlButtonAPressed)
     controller_1.buttonB.pressed(OnControlButtonBPressed)
