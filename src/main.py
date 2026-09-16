@@ -373,7 +373,7 @@ CLAW_ARM_MID2 = 2
 CLAW_ARM_MID3 = 3
 CLAW_ARM_UP = 4
 CLAW_ARM_POSITION = CLAW_ARM_DOWN  # 0 = down, 1 = mid1, 2 = mid2, 3 = mid3, 4 = up
-CLAW_ARM_TIMEOUT = 3.0
+CLAW_ARM_TIMEOUT = 2.0
 CLAW_ARM_SPEED = 50
 
 def initialize_claw():
@@ -443,8 +443,8 @@ def run_claw_arm(command, target_position=-1):
         wait(10, MSEC)
         count += 1
     # wait(333, MSEC)
-    #claw_arm_motor1.stop()
-    #claw_arm_motor2.stop()
+    claw_arm_motor1.stop()
+    claw_arm_motor2.stop()
     CLAW_ARM_RUNNING = False
     CLAW_ARM_POSITION = claw_target_position
     ending_position = (claw_arm_motor1.position(DEGREES), claw_arm_motor2.position(DEGREES))
