@@ -522,7 +522,7 @@ def turn_for(turn_degrees, speed=66):
     settle_count = 0
     timeout_count = 0
     done = False
-    turn_kp = 8.0
+    turn_kp = 7.0
     while not done:
 
         if abs(heading_error) < target_tolerance:
@@ -1348,16 +1348,18 @@ def autonomous_left():
     # place automonous code here
 
     lower_toggle()
-    drive_for(50, False, 50, heading = 0)
-    drive_for(-50, False, 50, heading = 0)
-    drive_for(50, False, 50, heading = 0)
-    drive_for(-50, False, 50, heading = 0)
+    drive_for(50, False, 100, heading = 0)
+    drive_for(-50, False, 100, heading = 0)
+    drive_for(50, False, 100, heading = 0)
+    drive_for(-50, False, 100, heading = 0)
     raise_toggle()
 
     Thread(claw_move1)
     wait(250, MSEC)
-    drive_for(100, False, 50, heading = 0)
-    drive_for(675, True, 50, heading = 0)
+
+    drive_to_xy(300, 1800, False, 66, heading = 0)
+    drive_to_xy(300, 2400, True, 66, heading = 0)
+
     drive_for(100, False, 50, heading = 0)
     command_lift(3)
     open_claw()
@@ -1371,7 +1373,7 @@ def autonomous_left():
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 180
-    turn_for(target_heading - current_heading, 66)
+    turn_for(target_heading - current_heading, 100)
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID3)
     wait(250, MSEC)
     close_claw()
@@ -1380,7 +1382,7 @@ def autonomous_left():
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 0
-    turn_for(target_heading - current_heading, 66)
+    turn_for(target_heading - current_heading, 100)
     command_lift(11)
     drive_for(-reverse_by+20, False, 50, heading = 0)
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID1)
