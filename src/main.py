@@ -22,13 +22,13 @@ from v5pythonlibrary import * # Loaded from SDCard
 ### SETUP DEFAULT ALLIANCE AND AUTONOMOUS SEQUENCE HERE
 # ------------------------------------------------------------ #
 
-CALIBRATION = False
+CALIBRATION = True
 
-# ALLIANCE_COLOR = AllianceColor.RED
-ALLIANCE_COLOR = AllianceColor.BLUE
+ALLIANCE_COLOR = AllianceColor.RED
+# ALLIANCE_COLOR = AllianceColor.BLUE
 
-# AUTON_SEQUENCE = AutonSequence.SKILLS
-AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
+AUTON_SEQUENCE = AutonSequence.SKILLS
+# AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
 # AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
 # AUTON_SEQUENCE = AutonSequence.MATCH_NONE
 
@@ -437,14 +437,18 @@ def run_claw_arm(command, target_position=-1):
     claw_arm_motor2.set_stopping(HOLD)
     claw_arm_motor2.set_timeout(CLAW_ARM_TIMEOUT, SECONDS)
     claw_arm_motor1.spin_to_position(claw_target_degrees, DEGREES, wait=False)
-    claw_arm_motor2.spin_to_position(claw_target_degrees, DEGREES)
-    wait(333, MSEC)
-    claw_arm_motor1.stop()
-    claw_arm_motor2.stop()
+    claw_arm_motor2.spin_to_position(claw_target_degrees, DEGREES, wait=False)
+    count = 0
+    while not (claw_arm_motor1.is_done() and claw_arm_motor2.is_done()): 
+        wait(10, MSEC)
+        count += 1
+    # wait(333, MSEC)
+    #claw_arm_motor1.stop()
+    #claw_arm_motor2.stop()
     CLAW_ARM_RUNNING = False
     CLAW_ARM_POSITION = claw_target_position
     ending_position = (claw_arm_motor1.position(DEGREES), claw_arm_motor2.position(DEGREES))
-    print("Claw from {} to {}".format(starting_position, ending_position))
+    print("Claw from {} to {}, {}ms".format(starting_position, ending_position, count * 10))
 
 def raise_claw_arm():
     run_claw_arm(CLAW_ARM_COMMAND_RAISE)
@@ -710,10 +714,14 @@ def drive_to_xy(target_x, target_y, strafe=False, speed=100, heading=None, timeo
     done = False
     timeout_count = 0
     settle_count = 0
+    loop_count = 0
+    is_timeout = False
+    is_settle = False
     last_fwd = 0
     last_strafe = 0
     fwd_ramp_enabled = True
     strafe_ramp_enabled = True
+
     while not done:
         current_rotation = inertial.rotation()
         rotation_error = (target_rotation - current_rotation) / 360.0 # saturate at 360 degrees
@@ -733,7 +741,11 @@ def drive_to_xy(target_x, target_y, strafe=False, speed=100, heading=None, timeo
         forward_target_revs = (average_fwd_error / effective_wheel_size) # if not strafe else 0
         strafe_target_revs = (average_strafe_error / effective_wheel_size) # if strafe else 0
 
-        if timeout_count > timeout or settle_count > 10:
+
+        if (timeout_count > timeout): is_timeout = True
+        if (settle_count > 10): is_settle = True
+
+        if is_timeout or is_settle:
             done = True
             left_front_motor.stop(BRAKE)
             left_back_motor.stop(BRAKE)
@@ -769,7 +781,6 @@ def drive_to_xy(target_x, target_y, strafe=False, speed=100, heading=None, timeo
 
             max_speed = max(abs(left_front_speed), abs(left_back_speed), abs(right_front_speed), abs(right_back_speed))
             if max_speed > 100:
-                print("s")
                 left_front_speed = left_front_speed * (100 / max_speed)
                 left_back_speed = left_back_speed * (100 / max_speed)
                 right_front_speed = right_front_speed * (100 / max_speed)
@@ -781,7 +792,11 @@ def drive_to_xy(target_x, target_y, strafe=False, speed=100, heading=None, timeo
             right_back_motor.spin(FORWARD, right_back_speed, PERCENT)
 
         timeout_count += 1
+        loop_count += 1
         wait(10, MSEC)
+
+    print("drive_to_xy: x={}, y={}, time={}, timeout={}, settle={}\n".format(target_x, target_y, loop_count * 10, is_timeout, is_settle))
+    return is_timeout, is_settle
 
 # + 30mm at 1440mm
 # + 22mm at 950mm
@@ -1469,13 +1484,15 @@ def connection_checker():
                 if not cleared:
                     brain.screen.clear_screen(Color.RED)
                     cleared = True
-                brain.screen.print("Sensor {} is not connected!\n".format(name))
+                brain.screen.print("Sensor {} is not connected!".format(name))
+                brain.screen.new_line()
         for motor, name in zip(all_motors, all_motor_names):
             if not motor.installed():
                 if not cleared:
                     brain.screen.clear_screen(Color.RED)
                     cleared = True
-                brain.screen.print("Motor {} is not connected!\n".format(name))
+                brain.screen.print("Motor {} is not connected!".format(name))
+                brain.screen.new_line()
         wait(1000, MSEC)
 
 def pre_autonomous():
