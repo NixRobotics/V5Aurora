@@ -22,13 +22,13 @@ from v5pythonlibrary import * # Loaded from SDCard
 ### SETUP DEFAULT ALLIANCE AND AUTONOMOUS SEQUENCE HERE
 # ------------------------------------------------------------ #
 
-CALIBRATION = True
+CALIBRATION = False
 
-ALLIANCE_COLOR = AllianceColor.RED
-# ALLIANCE_COLOR = AllianceColor.BLUE
+# ALLIANCE_COLOR = AllianceColor.RED
+ALLIANCE_COLOR = AllianceColor.BLUE
 
-AUTON_SEQUENCE = AutonSequence.SKILLS
-# AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
+# AUTON_SEQUENCE = AutonSequence.SKILLS
+AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
 # AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
 # AUTON_SEQUENCE = AutonSequence.MATCH_NONE
 
@@ -1295,13 +1295,13 @@ def autonomous_calibration():
             #wait(500, MSEC)
 
     while True:
-        drive_to_xy(900.0, 1800.0, False, 50, heading = 0)
+        drive_to_xy(900.0, 1800.0, False, 66, heading = 0)
         #wait(500, MSEC)
-        drive_to_xy(900.0, 700.0, True, 50, heading = 0)
+        drive_to_xy(900.0, 700.0, True, 66, heading = 0)
         #wait(500, MSEC)
-        drive_to_xy(300.0, 700.0, False, 50, heading = 0)
+        drive_to_xy(300.0, 700.0, False, 66, heading = 0)
         #wait(500, MSEC)
-        drive_to_xy(300.0, 1800.0, True, 50, heading = 0)
+        drive_to_xy(300.0, 1800.0, True, 66, heading = 0)
         #wait(500, MSEC)
         # break
     # ending_distance = average_back_distance()
