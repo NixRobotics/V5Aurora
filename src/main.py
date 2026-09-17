@@ -1,13 +1,23 @@
 # ----------------------------------------------------------------------------- #
 #                                                                               #                                    
-#    Project:        Aurora                                       #                             
+#    Project:        Aurora                                                     #                             
 #    Module:         main.py                                                    #
 #    Author:         VEX                                                        #
-#    Created:        Fri Aug 05 2022                                            #
-#    Description:    This example will use the left Y and right X               #
-#                    Controller axis to control the Clawbot.                    #
-#                                                                               #                                    
-#    Configuration:                                 #
+#    Created:        Aug 05 2026                                                #
+#    Description:    Override competition robot                                 #
+#                                                                               #
+#    Configuration:
+#       44W XDrive, 45degree wheels, 350rpm at wheels, 220mm wheel circumference#
+#       Inertial sensor with rough heading compensation at 183/180 degrees
+#       Foward and side tracking wheels, 2" diameter omni wheels
+#       Two back facing distance sensors
+#       Left and right facing distance sensors
+#       Front facing distance sensor mounted on claw arm
+#       11W 3-stage cascade lift. Max theoretical extension speed ~15"/sec, 11"/sec achievable
+#       Chain bar "claw arm" with two 5.5W motors geared 3:1. Arm length 9"
+#       Pneumatic claw
+#       Pneumatic color toggle retract
+#       Total weight: 16lbs
 #                                                                               #                                                                          
 # ----------------------------------------------------------------------------- #
 
