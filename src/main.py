@@ -264,6 +264,17 @@ def current_robot_speed(): # mm/s
     speed = average_motor_rps * effective_wheel_size
     return speed
 
+### TOGGLE CONTROL
+
+def raise_toggle():
+    toggle_solenoid.set(0)
+
+def lower_toggle():
+    toggle_solenoid.set(1)
+
+def toggle_raised():
+    return toggle_solenoid.value() == 0
+
 ### LIFT CONTROL
 
 LIFT_RUNNING = False
@@ -362,6 +373,8 @@ def check_lift_hold():
 
 CLAW_INITIALIZED = False
 CLAW_ARM_RUNNING = False
+CLAW_ARM_CANCEL_OPERATION = False
+CLAW_ARM_WAS_CANCELLED = False
 CLAW_ARM_UP_DEGREES = 160 * 3
 CLAW_ARM_MID3_DEGREES = 30 * 3 # was 24.5 * 3
 CLAW_ARM_MID2_DEGREES = 24.5 * 3 # was 24.5 * 3
@@ -398,26 +411,42 @@ CLAW_ARM_COMMAND_NONE = 0
 CLAW_ARM_COMMAND_RAISE = 1
 CLAW_ARM_COMMAND_LOWER = 2
 CLAW_ARM_COMMAND_TO_POSITION = 3
+CLAW_ARM_COMMAND_CANCEL = 5
 
 def run_claw_arm(command, target_position=-1):
-    global CLAW_ARM_RUNNING, CLAW_ARM_POSITION
-    if CLAW_ARM_RUNNING: return
+    global CLAW_ARM_RUNNING, CLAW_ARM_POSITION, CLAW_ARM_CANCEL_OPERATION, CLAW_ARM_WAS_CANCELLED
+
+    # WARNING: RE-ENTRANT CODE
+    if CLAW_ARM_RUNNING and command != CLAW_ARM_COMMAND_CANCEL: return
+
+    if command == CLAW_ARM_COMMAND_CANCEL:
+        CLAW_ARM_CANCEL_OPERATION = True
+        return
+    CLAW_ARM_CANCEL_OPERATION = False
+    # END RE-ENTRANT CODE
 
     positions_list = [CLAW_ARM_DOWN, CLAW_ARM_MID1, CLAW_ARM_MID2, CLAW_ARM_MID3, CLAW_ARM_UP]
     target_list = [CLAW_ARM_DOWN_DEGREES, CLAW_ARM_MID1_DEGREES, CLAW_ARM_MID2_DEGREES, CLAW_ARM_MID3_DEGREES, CLAW_ARM_UP_DEGREES]
 
     if command == CLAW_ARM_COMMAND_NONE: return
+
     if command == CLAW_ARM_COMMAND_RAISE:
-        if CLAW_ARM_POSITION >= CLAW_ARM_UP: return
-        claw_target_position = CLAW_ARM_POSITION + 1
-        # MID3 only used for autonomous
-        if (claw_target_position == CLAW_ARM_MID3): claw_target_position += 1
+        if CLAW_ARM_WAS_CANCELLED:
+            claw_target_position = CLAW_ARM_UP
+        else:
+            if CLAW_ARM_POSITION >= CLAW_ARM_UP : return
+            claw_target_position = CLAW_ARM_POSITION + 1
+            # MID3 only used for autonomous
+            if (claw_target_position == CLAW_ARM_MID3): claw_target_position += 1
         arm_speed = CLAW_ARM_SPEED
     elif command == CLAW_ARM_COMMAND_LOWER:
-        if CLAW_ARM_POSITION <= CLAW_ARM_DOWN: return
-        claw_target_position = CLAW_ARM_POSITION - 1
-        # MID3 only used for autonomous
-        if (claw_target_position == CLAW_ARM_MID3): claw_target_position -= 1
+        if CLAW_ARM_WAS_CANCELLED:
+            claw_target_position = CLAW_ARM_DOWN
+        else:
+            if CLAW_ARM_POSITION <= CLAW_ARM_DOWN: return
+            claw_target_position = CLAW_ARM_POSITION - 1
+            # MID3 only used for autonomous
+            if (claw_target_position == CLAW_ARM_MID3): claw_target_position -= 1
         arm_speed = CLAW_ARM_SPEED * 0.75
     elif command == CLAW_ARM_COMMAND_TO_POSITION:
         if target_position == CLAW_ARM_POSITION: return
@@ -426,9 +455,13 @@ def run_claw_arm(command, target_position=-1):
         if target_position > CLAW_ARM_POSITION: arm_speed = CLAW_ARM_SPEED
         else: arm_speed = CLAW_ARM_SPEED * 0.75
 
+    if claw_target_position >= CLAW_ARM_MID3:
+        raise_toggle()
+
     claw_target_degrees = target_list[claw_target_position]
 
     CLAW_ARM_RUNNING = True
+    CLAW_ARM_WAS_CANCELLED = False
     starting_position = (claw_arm_motor1.position(DEGREES), claw_arm_motor2.position(DEGREES))
     claw_arm_motor1.set_velocity(arm_speed, PERCENT)
     claw_arm_motor1.set_stopping(HOLD)
@@ -439,13 +472,16 @@ def run_claw_arm(command, target_position=-1):
     claw_arm_motor1.spin_to_position(claw_target_degrees, DEGREES, wait=False)
     claw_arm_motor2.spin_to_position(claw_target_degrees, DEGREES, wait=False)
     count = 0
-    while not (claw_arm_motor1.is_done() and claw_arm_motor2.is_done()): 
+    while not (claw_arm_motor1.is_done() and claw_arm_motor2.is_done()) and not CLAW_ARM_CANCEL_OPERATION: 
         wait(10, MSEC)
         count += 1
     # wait(333, MSEC)
     claw_arm_motor1.stop()
     claw_arm_motor2.stop()
     CLAW_ARM_RUNNING = False
+    if CLAW_ARM_CANCEL_OPERATION:
+        CLAW_ARM_CANCEL_OPERATION = False
+        CLAW_ARM_WAS_CANCELLED = True
     CLAW_ARM_POSITION = claw_target_position
     ending_position = (claw_arm_motor1.position(DEGREES), claw_arm_motor2.position(DEGREES))
     print("Claw from {} to {}, {}ms".format(starting_position, ending_position, count * 10))
@@ -458,6 +494,9 @@ def lower_claw_arm():
 
 def move_claw_arm_to_position(target_position, unused = 0):
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, target_position)
+
+def claw_arm_current_position():
+    return CLAW_ARM_POSITION
 
 CLAW_OPEN = 1
 CLAW_CLOSED = 0
@@ -492,13 +531,6 @@ def auto_claw_thread():
                     close_claw()
                     wait(1, SECONDS)
         wait(10, MSEC)
-
-
-def raise_toggle():
-    toggle_solenoid.set(0)
-
-def lower_toggle():
-    toggle_solenoid.set(1)
 
 ### AUTONOMOUS
 
@@ -1454,7 +1486,6 @@ def autonomous_right():
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
     command_lift(0)
 
-
 def autonomous():
     global ROBOT_ENABLED
     while not ROBOT_INITIALIZED:
@@ -1562,8 +1593,9 @@ def OnLowerClawPressed(): # L2
     if not ROBOT_ENABLED: return
     if CLAW_ARM_RUNNING:
         print("Was Running")
-        claw_arm_motor1.stop(HOLD)
-        claw_arm_motor2.stop(HOLD)
+        # claw_arm_motor1.stop(HOLD)
+        # claw_arm_motor2.stop(HOLD)
+        run_claw_arm(CLAW_ARM_COMMAND_CANCEL)
         return
 
     pressed_counter = 0
@@ -1580,8 +1612,9 @@ def OnRaiseClawPressed(): # L1
     if not ROBOT_ENABLED: return
     if CLAW_ARM_RUNNING:
         print("Was Running")
-        claw_arm_motor1.stop(HOLD)
-        claw_arm_motor2.stop(HOLD)
+        #claw_arm_motor1.stop(HOLD)
+        #claw_arm_motor2.stop(HOLD)
+        run_claw_arm(CLAW_ARM_COMMAND_CANCEL)
         return
 
     pressed_counter = 0
@@ -1604,10 +1637,10 @@ def OnControlButtonAPressed():
 
 def OnControlButtonBPressed():
     if not ROBOT_ENABLED: return
-    if toggle_solenoid.value() == 1:
-        toggle_solenoid.set(0)
+    if toggle_raised() and claw_arm_current_position() < CLAW_ARM_MID3:
+        lower_toggle()
     else:
-        toggle_solenoid.set(1)
+        raise_toggle()
 
 def OnControlButtonUpPressed():
     pressed_counter = 0
