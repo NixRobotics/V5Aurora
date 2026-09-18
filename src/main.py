@@ -62,7 +62,7 @@ DRIVETRAIN_WHEEL_ANGLES = 45 # deg from straight
 DRIVETRAIN_WHEEL_SIZE = 220 # mm circumference
 DRIVETRAIN_MAX_TORQUE = 0.35 # Nm
 
-inertial = InertialWrapper(Ports.PORT5, 183/180)
+inertial = InertialWrapper(Ports.PORT5, 181.5/180.0)
 claw_distance = Distance(Ports.PORT2)
 
 HIDDEN_PERIMITER = 15 #mm
@@ -86,11 +86,11 @@ RIGHT_DISTANCE_FROM_RIGHT = 10 # mm
 right_distance = Distance(Ports.PORT8)
 
 ROTATION_SIDE_WHEEL_SIZE = 2 * 25.4 * pi # mm circumference
-ROTATION_SIDE_WHEEL_OFFSET = 2.5 * 25.4 # mm (forward)
+ROTATION_SIDE_WHEEL_OFFSET = 61.0 # mm (forward)
 rotation_side = Rotation(Ports.PORT18, True)
 
 ROTATION_FWD_WHEEL_SIZE = 2 * 25.4 * pi # mm circumference
-ROTATION_FWD_WHEEL_OFFSET = 1.0 * 25.4 # mm (right)
+ROTATION_FWD_WHEEL_OFFSET = 23.0 # mm (right)
 rotation_fwd = Rotation(Ports.PORT20, False)
 
 claw_solenoid = DigitalOut(brain.three_wire_port.a)
@@ -471,7 +471,7 @@ class XDriveTrain():
         self.rfm.stop(mode)
         self.rbm.stop(mode)
 
-    def turn_for(self, turn_degrees, speed=66):
+    def turn_for(self, turn_degrees, speed=66, timeout=10000):
         current_heading = inertial.rotation()
         target_heading = current_heading + turn_degrees
         heading_error = target_heading - current_heading
@@ -494,7 +494,7 @@ class XDriveTrain():
             else:
                 settle_count = 0
 
-            if timeout_count > 1000: is_timeout = True
+            if timeout_count > int(timeout / 10): is_timeout = True
             if settle_count > 10: is_settle = True
 
             if is_timeout or is_settle:
@@ -1112,7 +1112,7 @@ def predict_wheels():
         delta_local_y = delta_side
     else:
         r_forward = forward_offset + delta_forward / radians(delta_theta) # mm
-        r_side = side_offset + delta_side / radians(delta_theta) # mm
+        r_side = -side_offset + delta_side / radians(delta_theta) # mm
 
         to_global_rotation_angle = current_theta + delta_theta / 2.0
         delta_local_x = r_forward * 2.0 * sin(radians(delta_theta) / 2.0)
@@ -1288,14 +1288,14 @@ def log_odom():
 
     # Run ramp test
 
-    TOTAL_SAMPLES = 400
+    TOTAL_SAMPLES = 450
     PRINT_DELAY = 250 # ms between samples. Set to around 250 for wireless or 50 for USB
 
     for i in range(TOTAL_SAMPLES):
 
         entry = [
-            previous_rotation_positions[0] * pi * ROTATION_FWD_WHEEL_SIZE,
-            previous_rotation_positions[1] * pi * ROTATION_FWD_WHEEL_SIZE,
+            previous_rotation_positions[0] * ROTATION_FWD_WHEEL_SIZE,
+            previous_rotation_positions[1] * ROTATION_FWD_WHEEL_SIZE,
             previous_left_distance[0],
             previous_right_distance[0],
             previous_back_distance[0],
@@ -1344,18 +1344,22 @@ def autonomous_calibration():
     odom_distance_enable(True, False, True)
 
     wait(100, MSEC)
-    # DISTANCE_ENABLED = False
 
     # drive_for(1200, False, 50, heading = 0)
     # wait(100, MSEC)
     # return
 
-    speed = 50
+    speed = 66
 
     if True:
         dt.drive_to_xy(300.0, 2750.0, False, speed, heading = 0)
 
         while True:
+
+            use_distance = True
+            odom_distance_enable(True, False, True)
+            wait(500, MSEC)
+            if not use_distance: odom_distance_enable(False, False, False)
 
             overtemp = False
             for motors in [left_front_motor, left_back_motor, right_front_motor, right_back_motor]:
@@ -1375,17 +1379,17 @@ def autonomous_calibration():
             #wait(500, MSEC)
             dt.drive_to_xy(300.0 + 100, 2750 - 400.0, False, speed, heading = 0)
             #wait(500, MSEC)
-            odom_distance_enable(False, False, False)
+            if use_distance: odom_distance_enable(False, False, False)
             dt.turn_for(-90, speed)
-            odom_distance_enable(True, True, False)
+            if use_distance: odom_distance_enable(True, True, False)
             #wait(500, MSEC)
             dt.drive_to_xy(300.0 + 100, 2750 + 400.0, False, speed, heading = -90)
             #wait(500, MSEC)
             dt.drive_to_xy(300.0 + 100, 2750 - 400.0, False, speed, heading = -90)
             #wait(500, MSEC)
-            odom_distance_enable(False, False, False)
+            if use_distance: odom_distance_enable(False, False, False)
             dt.turn_for(90, speed)
-            odom_distance_enable(True, False, True)
+            if use_distance: odom_distance_enable(True, False, True)
             #wait(500, MSEC)
             dt.drive_to_xy(300.0, 2750 - 400.0, False, speed, heading = 0)
 
