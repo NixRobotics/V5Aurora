@@ -24,10 +24,9 @@
 
 # Library imports
 from vex import *
-from math import radians, degrees, cos, asin, sin, sqrt, pi
-import json
-
 from v5pythonlibrary import * # Loaded from SDCard
+from robotconfiguration import RobotConfiguration
+from math import radians, degrees, cos, asin, sin, sqrt, pi
 
 # ------------------------------------------------------------ #
 ### SETUP DEFAULT ALLIANCE AND AUTONOMOUS SEQUENCE HERE
@@ -122,145 +121,7 @@ QUIET_MODE = False
 ### ROBOT CONFIGURATION
 # ------------------------------------------------------------ #
 
-class RobotConfiguration:
-    def __init__(self):
-        self.enable_heading_hold = False
-        self.enable_field_orient = False
-        self.enable_auto_claw_down = False
-        self.enable_auto_claw_mid1 = False
-        self.enable_slow_ramp = False
-        self.enable_motion_model = False
-
-    def save_settings(self):
-        print("saving settings")
-        settings = {
-            "heading_hold": self.enable_heading_hold,
-            "field_orient": self.enable_field_orient,
-            "slow_ramp": self.enable_slow_ramp,
-            "auto_claw_down": self.enable_auto_claw_down,
-            "auto_claw_mid1": self.enable_auto_claw_mid1,
-            "motion_model": self.enable_motion_model
-        }
-        print("settings to save:", settings)
-        with open("settings.json", "w") as f:
-            json.dump(settings, f)
-
-    def load_settings(self):
-        print("loading settings")
-        try:
-            with open("settings.json", "r") as f:
-                settings = json.load(f)
-                print("settings loaded:", settings)
-                self.enable_heading_hold = settings.get("heading_hold", self.enable_heading_hold)
-                self.enable_field_orient = settings.get("field_orient", self.enable_field_orient)
-                self.enable_slow_ramp = settings.get("slow_ramp", self.enable_slow_ramp)
-                self.enable_auto_claw_down = settings.get("auto_claw_down", self.enable_auto_claw_down)
-                self.enable_auto_claw_mid1 = settings.get("auto_claw_mid1", self.enable_auto_claw_mid1)
-                self.enable_motion_model = settings.get("motion_model", self.enable_motion_model)
-        except:
-            print("settings file not found, saving default settings")
-            self.save_settings()
-        print("heading_hold:", self.enable_heading_hold)
-        print("field_orient:", self.enable_field_orient)
-        print("slow_ramp:", self.enable_slow_ramp)
-        print("auto_claw_down:", self.enable_auto_claw_down)
-        print("auto_claw_mid1:", self.enable_auto_claw_mid1)
-        print("motion_model:", self.enable_motion_model)
-
-    def configuration_UI(self):
-        global ROBOT_ENABLED
-        ROBOT_ENABLED = False
-        if motor_monitor is not None: motor_monitor.mute(True)
-        # Use up and down arrows to select different menu items on screen
-        # Left and right arrows to change the value of the selected menu item
-        # Pressing A confirms the selected option
-        # Changes saved to SDCard and read upon next initialization
-        # Current options are:
-        # - Enable / Disable Heading Hold
-        # - Enable / Disable Field Orient
-        # - Enable / Disable Auto Claw Down
-        # - Enable / Disable Auto Claw Mid1
-
-        brain.screen.clear_screen()
-        brain.screen.set_cursor(1, 1)
-        brain.screen.print("Robot Configuration")
-        brain.screen.new_line()
-        brain.screen.print("Use arrows to navigate")
-        brain.screen.new_line()
-        brain.screen.print("Hold A to save and exit")
-        brain.screen.new_line()
-        brain.screen.print("Press B to discard changesand exit")
-        brain.screen.new_line()
-        brain.screen.new_line()
-
-        menu_data = [
-            {"name": "Heading Hold", "enabled": self.enable_heading_hold},
-            {"name": "Field Orient", "enabled": self.enable_field_orient},
-            {"name": "Slow Ramp", "enabled": self.enable_slow_ramp},
-            {"name": "Auto Claw Down", "enabled": self.enable_auto_claw_down},
-            {"name": "Auto Claw Mid1", "enabled": self.enable_auto_claw_mid1},
-            {"name": "Motion Model", "enabled": self.enable_motion_model}
-        ]
-
-        menu_selection = 0
-        brain.screen.print("[{}] {}".format("X" if menu_data[menu_selection]["enabled"] else " ", menu_data[menu_selection]["name"]))
-
-        # Wait for user input to navigate the menu
-        pressing_timer = 0
-        options_changed = False
-        while True:
-            if controller_1.buttonA.pressing():
-                if pressing_timer > 2000:
-                    brain.screen.clear_screen()
-                    brain.screen.set_cursor(1, 1)
-                    brain.screen.print("Saving settings...")
-                    break
-                else:
-                    pressing_timer += 20
-            else:
-                pressing_timer = 0
-
-            if controller_1.buttonB.pressing():
-                # Discard changes and exit
-                brain.screen.clear_screen()
-                brain.screen.set_cursor(1, 1)
-                brain.screen.print("Discarding changes...")
-                if motor_monitor is not None:
-                    motor_monitor.mute(False)
-                    motor_monitor.refresh()
-                ROBOT_ENABLED = True
-                return
-            if controller_1.buttonDown.pressing():
-                menu_selection = (menu_selection + 1) % len(menu_data)
-                wait(200, MSEC)  # Debounce delay
-                options_changed = True
-            if controller_1.buttonRight.pressing():
-                menu_data[menu_selection]["enabled"] = not menu_data[menu_selection]["enabled"]
-                options_changed = True
-                wait(200, MSEC)  # Debounce delay
-            if options_changed:
-                options_changed = False
-                brain.screen.set_cursor(6, 1)
-                brain.screen.print("[{}] {}          ".format("X" if menu_data[menu_selection]["enabled"] else " ", menu_data[menu_selection]["name"]))
-            wait(20, MSEC)
-
-        self.enable_heading_hold = menu_data[0]["enabled"]
-        self.enable_field_orient = menu_data[1]["enabled"]
-        self.enable_slow_ramp = menu_data[2]["enabled"]
-        self.enable_auto_claw_down = menu_data[3]["enabled"]
-        self.enable_auto_claw_mid1 = menu_data[4]["enabled"]
-        self.enable_motion_model = menu_data[5]["enabled"]
-
-        brain.screen.new_line()
-        self.save_settings()
-        brain.screen.print("Settings saved!")
-        wait(1000, MSEC)
-        ROBOT_ENABLED = True
-        if motor_monitor is not None:
-            motor_monitor.mute(False)
-            motor_monitor.refresh()
-
-robot_config = RobotConfiguration()
+robot_config = RobotConfiguration(brain, controller_1)
 
 ### DRIVETRAIN UTILITIES
 
@@ -565,353 +426,364 @@ THETA = 0
 
 ### MOTOR COMMAND VELOCITIES
 
-FLM_COMMAND_VEL = 0
-LBM_COMMAND_VEL = 0
-FRM_COMMAND_VEL = 0
-RBM_COMMAND_VEL = 0
+class XDriveTrain():
 
-def log_motor_commands(flm_vel, lbm_vel, frm_vel, rbm_vel):
-    global FLM_COMMAND_VEL, LBM_COMMAND_VEL, FRM_COMMAND_VEL, RBM_COMMAND_VEL
-    FLM_COMMAND_VEL = flm_vel
-    LBM_COMMAND_VEL = lbm_vel
-    FRM_COMMAND_VEL = frm_vel
-    RBM_COMMAND_VEL = rbm_vel
+    FOWARD_EFFICIENCY = 1 / 1.045
+    LEFT_POWER_SCALING = 1.0
+    RIGHT_POWER_SCALING = 0.85
+    FRONT_POWER_SCALING = 1.0
+    BACK_POWER_SCALING = 1.0
 
-def limit(input, limit_value):
-    if (input > limit_value): return limit_value
-    elif (input < -limit_value): return -limit_value
-    return input
+    def __init__(self, lfm: Motor, lbm: Motor, rfm: Motor, rbm: Motor):
+        self.lfm = lfm
+        self.lbm = lbm
+        self.rfm = rfm
+        self.rbm = rbm
 
-def ramp_limit(current, previous, limit):
-    if (current - previous) > limit:
-        return previous + limit
-    elif (current - previous) < -limit:
-        return previous - limit
-    return current
+        self.last_lfm_command_vel = 0
+        self.last_lbm_command_vel = 0
+        self.last_rfm_command_vel = 0
+        self.last_rbm_command_vel = 0
 
-def stop_all(mode = COAST):
-    left_front_motor.stop(mode)
-    left_back_motor.stop(mode)
-    right_front_motor.stop(mode)
-    right_back_motor.stop(mode)
+    def log_motor_commands(self, lfm_vel, lbm_vel, rfm_vel, rbm_vel):
+        self.last_lfm_command_vel = lfm_vel
+        self.last_lbm_command_vel = lbm_vel
+        self.last_rfm_command_vel = rfm_vel
+        self.last_rbm_command_vel = rbm_vel
 
-def turn_for(turn_degrees, speed=66):
-    current_heading = inertial.rotation()
-    target_heading = current_heading + turn_degrees
-    heading_error = target_heading - current_heading
-    target_tolerance = 1  # degrees
-    settle_count = 0
-    timeout_count = 0
-    is_timeout = False
-    is_settle = False
-    loop_count = 0
-    done = False
-    turn_kp = 6.0
+    @staticmethod
+    def limit(input, limit_value):
+        if (input > limit_value): return limit_value
+        elif (input < -limit_value): return -limit_value
+        return input
 
-    while not done:
+    @staticmethod
+    def ramp_limit(current, previous, limit):
+        if (current - previous) > limit:
+            return previous + limit
+        elif (current - previous) < -limit:
+            return previous - limit
+        return current
 
+    def stop_all(self, mode = COAST):
+        self.lfm.stop(mode)
+        self.lbm.stop(mode)
+        self.rfm.stop(mode)
+        self.rbm.stop(mode)
+
+    def turn_for(self, turn_degrees, speed=66):
         current_heading = inertial.rotation()
+        target_heading = current_heading + turn_degrees
         heading_error = target_heading - current_heading
+        target_tolerance = 1  # degrees
+        settle_count = 0
+        timeout_count = 0
+        is_timeout = False
+        is_settle = False
+        loop_count = 0
+        done = False
+        turn_kp = 6.0
 
-        if abs(heading_error) < target_tolerance:
-            settle_count += 1
-        else:
-            settle_count = 0
+        while not done:
 
-        if timeout_count > 1000: is_timeout = True
-        if settle_count > 10: is_settle = True
+            current_heading = inertial.rotation()
+            heading_error = target_heading - current_heading
 
-        if is_timeout or is_settle:
-            left_front_motor.stop(BRAKE)
-            left_back_motor.stop(BRAKE)
-            right_front_motor.stop(BRAKE)
-            right_back_motor.stop(BRAKE)
-            done = True
-        else:
-            turn_control = turn_kp * heading_error / 360.0
-            turn_control = limit(turn_control, 1.0) * speed
+            if abs(heading_error) < target_tolerance:
+                settle_count += 1
+            else:
+                settle_count = 0
 
-            left_front_motor.spin(FORWARD, turn_control, PERCENT)
-            left_back_motor.spin(FORWARD, turn_control, PERCENT)
-            right_front_motor.spin(REVERSE, turn_control, PERCENT)
-            right_back_motor.spin(REVERSE, turn_control, PERCENT)
-            log_motor_commands(turn_control, turn_control, -turn_control, -turn_control)
+            if timeout_count > 1000: is_timeout = True
+            if settle_count > 10: is_settle = True
 
-        timeout_count += 1
-        loop_count += 1
-        wait(10, MSEC)
+            if is_timeout or is_settle:
+                self.lfm.stop(BRAKE)
+                self.lbm.stop(BRAKE)
+                self.rfm.stop(BRAKE)
+                self.rbm.stop(BRAKE)
+                done = True
+            else:
+                turn_control = turn_kp * heading_error / 360.0
+                turn_control = self.limit(turn_control, 1.0) * speed
 
-    if not QUIET_MODE:
-        print("turn_for: x={}, y={}, heading={}, time={}, timeout={}, settle={}".format(X, Y, THETA, loop_count * 10, is_timeout, is_settle))
+                self.lfm.spin(FORWARD, turn_control, PERCENT)
+                self.lbm.spin(FORWARD, turn_control, PERCENT)
+                self.rfm.spin(REVERSE, turn_control, PERCENT)
+                self.rbm.spin(REVERSE, turn_control, PERCENT)
+                self.log_motor_commands(turn_control, turn_control, -turn_control, -turn_control)
 
-    return is_timeout, is_settle
+            timeout_count += 1
+            loop_count += 1
+            wait(10, MSEC)
 
-FOWARD_EFFICIENCY = 1 / 1.045
-LEFT_POWER_SCALING = 1.0
-RIGHT_POWER_SCALING = 0.85
-FRONT_POWER_SCALING = 1.0
-BACK_POWER_SCALING = 1.0
+        if not QUIET_MODE:
+            print("turn_for: x={}, y={}, heading={}, time={}, timeout={}, settle={}".format(X, Y, THETA, loop_count * 10, is_timeout, is_settle))
 
-def drive_for(distance, strafe=False, speed=100, heading=None, timeout=10000): # distance is in mm, speed is in percent
-    # setup
-    turn_speed = 100 # max turn speed in percent
-    wheel_efficiency = 1 / cos(radians(DRIVETRAIN_WHEEL_ANGLES))
-    effective_wheel_size = 220 * wheel_efficiency * DRIVETRAIN_EXTERNAL_GEAR_RATIO
-    forward_target_revs = (distance / effective_wheel_size) / FOWARD_EFFICIENCY if not strafe else 0
-    strafe_target_revs = distance / effective_wheel_size if strafe else 0
-    if not QUIET_MODE:
-        print("Target revolutions: {:.2f} {:.2f}".format(forward_target_revs, strafe_target_revs))
-    target_tolerance = 10 / effective_wheel_size
-    ramp_rate = 1
-    drive_kp = 50.0  # Proportional gain for drive control
-    turn_kp = 500.0  # Proportional gain for turn control
+        return is_timeout, is_settle
 
-    # save initial motor positions
-    starting_left_front_position = left_front_motor.position(TURNS)
-    starting_left_back_position = left_back_motor.position(TURNS)
-    starting_right_front_position = right_front_motor.position(TURNS)
-    starting_right_back_position = right_back_motor.position(TURNS)
+    def drive_for(self, distance, strafe=False, speed=100, heading=None, timeout=10000): # distance is in mm, speed is in percent
+        # setup
+        turn_speed = 100 # max turn speed in percent
+        wheel_efficiency = 1 / cos(radians(DRIVETRAIN_WHEEL_ANGLES))
+        effective_wheel_size = 220 * wheel_efficiency * DRIVETRAIN_EXTERNAL_GEAR_RATIO
+        forward_target_revs = (distance / effective_wheel_size) / self.FOWARD_EFFICIENCY if not strafe else 0
+        strafe_target_revs = distance / effective_wheel_size if strafe else 0
+        if not QUIET_MODE:
+            print("Target revolutions: {:.2f} {:.2f}".format(forward_target_revs, strafe_target_revs))
+        target_tolerance = 10 / effective_wheel_size
+        ramp_rate = 1
+        drive_kp = 50.0  # Proportional gain for drive control
+        turn_kp = 500.0  # Proportional gain for turn control
 
-    # save starting rotation
-    target_rotation = heading if heading is not None else inertial.rotation()
+        # save initial motor positions
+        starting_left_front_position = self.lfm.position(TURNS)
+        starting_left_back_position = self.lbm.position(TURNS)
+        starting_right_front_position = self.rfm.position(TURNS)
+        starting_right_back_position = self.rbm.position(TURNS)
 
-    if not QUIET_MODE:
-        print("LF: {}, LB: {}, RF: {}, RB: {}".format(starting_left_front_position, starting_left_back_position, starting_right_front_position, starting_right_back_position))
+        # save starting rotation
+        target_rotation = heading if heading is not None else inertial.rotation()
 
-    done = False
-    timeout_count = 0
-    settle_count = 0
-    loop_count = 0
-    is_timeout = False
-    is_settle = False
-    last_fwd = 0
-    last_strafe = 0
-    fwd_ramp_enabled = True
-    strafe_ramp_enabled = True
-    
-    while not done:
-        current_left_front_position = left_front_motor.position(TURNS)
-        current_left_back_position = left_back_motor.position(TURNS)
-        current_right_front_position = right_front_motor.position(TURNS)
-        current_right_back_position = right_back_motor.position(TURNS)
+        if not QUIET_MODE:
+            print("LF: {}, LB: {}, RF: {}, RB: {}".format(starting_left_front_position, starting_left_back_position, starting_right_front_position, starting_right_back_position))
 
-        current_rotation = inertial.rotation()
-        rotation_error = (target_rotation - current_rotation) / 360.0 # saturate at 360 degrees
+        done = False
+        timeout_count = 0
+        settle_count = 0
+        loop_count = 0
+        is_timeout = False
+        is_settle = False
+        last_fwd = 0
+        last_strafe = 0
+        fwd_ramp_enabled = True
+        strafe_ramp_enabled = True
+        
+        while not done:
+            current_left_front_position = self.lfm.position(TURNS)
+            current_left_back_position = self.lbm.position(TURNS)
+            current_right_front_position = self.rfm.position(TURNS)
+            current_right_back_position = self.rbm.position(TURNS)
 
-        left_front_delta = current_left_front_position - starting_left_front_position
-        left_back_delta = current_left_back_position - starting_left_back_position
-        right_front_delta = current_right_front_position - starting_right_front_position
-        right_back_delta = current_right_back_position - starting_right_back_position
+            current_rotation = inertial.rotation()
+            rotation_error = (target_rotation - current_rotation) / 360.0 # saturate at 360 degrees
 
-        left_error = forward_target_revs - (left_front_delta + left_back_delta) / 2.0
-        right_error = forward_target_revs - (right_front_delta + right_back_delta) / 2.0
-        average_fwd_error = (left_error + right_error) / 2.0
+            left_front_delta = current_left_front_position - starting_left_front_position
+            left_back_delta = current_left_back_position - starting_left_back_position
+            right_front_delta = current_right_front_position - starting_right_front_position
+            right_back_delta = current_right_back_position - starting_right_back_position
 
-        front_error = strafe_target_revs - (-right_front_delta + left_front_delta) / 2.0
-        back_error = strafe_target_revs - (right_back_delta - left_back_delta) / 2.0
-        average_strafe_error = (front_error + back_error) / 2.0
+            left_error = forward_target_revs - (left_front_delta + left_back_delta) / 2.0
+            right_error = forward_target_revs - (right_front_delta + right_back_delta) / 2.0
+            average_fwd_error = (left_error + right_error) / 2.0
 
-        # print("{:0.2f} {:0.2f} {:0.2f} {:0.2f}".format(left_error, right_error, front_error, back_error))
+            front_error = strafe_target_revs - (-right_front_delta + left_front_delta) / 2.0
+            back_error = strafe_target_revs - (right_back_delta - left_back_delta) / 2.0
+            average_strafe_error = (front_error + back_error) / 2.0
 
-        average_error = average_fwd_error if not strafe else average_strafe_error
-        if abs(average_error) < target_tolerance:
-            settle_count += 1
-        else:
-            settle_count = 0
+            # print("{:0.2f} {:0.2f} {:0.2f} {:0.2f}".format(left_error, right_error, front_error, back_error))
 
-        if (timeout_count > timeout): is_timeout = True
-        if (settle_count > 10): is_settle = True
+            average_error = average_fwd_error if not strafe else average_strafe_error
+            if abs(average_error) < target_tolerance:
+                settle_count += 1
+            else:
+                settle_count = 0
 
-        if is_timeout or is_settle:
-            done = True
-            left_front_motor.stop(BRAKE)
-            left_back_motor.stop(BRAKE)
-            right_front_motor.stop(BRAKE)
-            right_back_motor.stop(BRAKE)
-        else:
-            fwd_control = drive_kp * average_fwd_error
-            fwd_control = limit(fwd_control, speed)
-            if abs(fwd_control) < abs(last_fwd): fwd_ramp_enabled = False
-            if fwd_ramp_enabled: fwd_control = ramp_limit(fwd_control, last_fwd, ramp_rate)
-            last_fwd = fwd_control
-            fwd_control_percent = fwd_control
+            if (timeout_count > timeout): is_timeout = True
+            if (settle_count > 10): is_settle = True
 
-            strafe_control = drive_kp * average_strafe_error
-            strafe_control = limit(strafe_control, speed)
-            if abs(strafe_control) < abs(last_strafe): strafe_ramp_enabled = False
-            if strafe_ramp_enabled: strafe_control = ramp_limit(strafe_control, last_strafe, ramp_rate)
-            last_strafe = strafe_control
-            strafe_control_percent = strafe_control
+            if is_timeout or is_settle:
+                done = True
+                self.lfm.stop(BRAKE)
+                self.lbm.stop(BRAKE)
+                self.rfm.stop(BRAKE)
+                self.rbm.stop(BRAKE)
+            else:
+                fwd_control = drive_kp * average_fwd_error
+                fwd_control = self.limit(fwd_control, speed)
+                if abs(fwd_control) < abs(last_fwd): fwd_ramp_enabled = False
+                if fwd_ramp_enabled: fwd_control = self.ramp_limit(fwd_control, last_fwd, ramp_rate)
+                last_fwd = fwd_control
+                fwd_control_percent = fwd_control
 
-            turn_control = turn_kp * rotation_error
-            turn_control_percent = limit(turn_control, turn_speed)
+                strafe_control = drive_kp * average_strafe_error
+                strafe_control = self.limit(strafe_control, speed)
+                if abs(strafe_control) < abs(last_strafe): strafe_ramp_enabled = False
+                if strafe_ramp_enabled: strafe_control = self.ramp_limit(strafe_control, last_strafe, ramp_rate)
+                last_strafe = strafe_control
+                strafe_control_percent = strafe_control
 
-            left_power = LEFT_POWER_SCALING
-            right_power = RIGHT_POWER_SCALING
-            front_power = FRONT_POWER_SCALING
-            back_power = BACK_POWER_SCALING
+                turn_control = turn_kp * rotation_error
+                turn_control_percent = self.limit(turn_control, turn_speed)
 
-            left_front_speed = fwd_control_percent * right_power + strafe_control_percent * front_power + turn_control_percent
-            left_back_speed = fwd_control_percent * left_power - strafe_control_percent * back_power + turn_control_percent
-            right_front_speed = fwd_control_percent * left_power - strafe_control_percent * front_power - turn_control_percent
-            right_back_speed = fwd_control_percent * right_power + strafe_control_percent * back_power - turn_control_percent
+                left_power = self.LEFT_POWER_SCALING
+                right_power = self.RIGHT_POWER_SCALING
+                front_power = self.FRONT_POWER_SCALING
+                back_power = self.BACK_POWER_SCALING
 
-            max_speed = max(abs(left_front_speed), abs(left_back_speed), abs(right_front_speed), abs(right_back_speed))
-            if max_speed > 100:
-                left_front_speed = left_front_speed * (100 / max_speed)
-                left_back_speed = left_back_speed * (100 / max_speed)
-                right_front_speed = right_front_speed * (100 / max_speed)
-                right_back_speed = right_back_speed * (100 / max_speed)
+                left_front_speed = fwd_control_percent * right_power + strafe_control_percent * front_power + turn_control_percent
+                left_back_speed = fwd_control_percent * left_power - strafe_control_percent * back_power + turn_control_percent
+                right_front_speed = fwd_control_percent * left_power - strafe_control_percent * front_power - turn_control_percent
+                right_back_speed = fwd_control_percent * right_power + strafe_control_percent * back_power - turn_control_percent
 
-            left_front_motor.spin(FORWARD, left_front_speed, PERCENT)
-            left_back_motor.spin(FORWARD, left_back_speed, PERCENT)
-            right_front_motor.spin(FORWARD, right_front_speed, PERCENT)
-            right_back_motor.spin(FORWARD, right_back_speed, PERCENT)
-            log_motor_commands(left_front_speed, left_back_speed, right_front_speed, right_back_speed)
+                max_speed = max(abs(left_front_speed), abs(left_back_speed), abs(right_front_speed), abs(right_back_speed))
+                if max_speed > 100:
+                    left_front_speed = left_front_speed * (100 / max_speed)
+                    left_back_speed = left_back_speed * (100 / max_speed)
+                    right_front_speed = right_front_speed * (100 / max_speed)
+                    right_back_speed = right_back_speed * (100 / max_speed)
 
-        timeout_count += 1
-        loop_count += 1
-        wait(10, MSEC)
+                self.lfm.spin(FORWARD, left_front_speed, PERCENT)
+                self.lbm.spin(FORWARD, left_back_speed, PERCENT)
+                self.rfm.spin(FORWARD, right_front_speed, PERCENT)
+                self.rbm.spin(FORWARD, right_back_speed, PERCENT)
+                self.log_motor_commands(left_front_speed, left_back_speed, right_front_speed, right_back_speed)
 
-    # save initial motor positions
-    left_front_position = left_front_motor.position(TURNS)
-    left_back_position = left_back_motor.position(TURNS)
-    right_front_position = right_front_motor.position(TURNS)
-    right_back_position = right_back_motor.position(TURNS)
+            timeout_count += 1
+            loop_count += 1
+            wait(10, MSEC)
 
-    if not QUIET_MODE:
-        print("drive_for: LF: {}, LB: {}, RF: {}, RB: {}".format(left_front_position, left_back_position, right_front_position, right_back_position))
-        print("drive_for: x={}, y={}, heading={}, time={}, timeout={}, settle={}".format(X, Y, THETA, loop_count * 10, is_timeout, is_settle))
+        # save initial motor positions
+        left_front_position = self.lfm.position(TURNS)
+        left_back_position = self.lbm.position(TURNS)
+        right_front_position = self.rfm.position(TURNS)
+        right_back_position = self.rbm.position(TURNS)
 
-    return is_timeout, is_settle
+        if not QUIET_MODE:
+            print("drive_for: LF: {}, LB: {}, RF: {}, RB: {}".format(left_front_position, left_back_position, right_front_position, right_back_position))
+            print("drive_for: x={}, y={}, heading={}, time={}, timeout={}, settle={}".format(X, Y, THETA, loop_count * 10, is_timeout, is_settle))
 
-def drive_to_xy(target_x, target_y, strafe=False, speed=100, heading=None, timeout=10000): # distance is in mm, speed is in percent
+        return is_timeout, is_settle
 
-    if not QUIET_MODE:
-        print("Driving to X: {}, Y: {} from X: {}, Y: {}".format(target_x, target_y, X, Y))
+    def drive_to_xy(self, target_x, target_y, strafe=False, speed=100, heading=None, timeout=10000): # distance is in mm, speed is in percent
 
-    # setup
-    wheel_efficiency = 1 / cos(radians(DRIVETRAIN_WHEEL_ANGLES))
-    effective_wheel_size = 220 * wheel_efficiency * DRIVETRAIN_EXTERNAL_GEAR_RATIO
-    turn_speed = 100 # max turn speed in percent
-    target_tolerance = 10 # mm
-    ramp_rate = 1
-    drive_kp = 50.0  # Proportional gain for drive control # 50 / 256
-    drive_kd = 256.0 # Derivative gain for drive control
-    turn_kp = 550.0  # Proportional gain for turn control
-    derivative_alpha = 0.2
-    previous_fwd_error_revs = None
-    previous_strafe_error_revs = None
-    filtered_fwd_derivative = 0.0
-    filtered_strafe_derivative = 0.0
+        if not QUIET_MODE:
+            print("Driving to X: {}, Y: {} from X: {}, Y: {}".format(target_x, target_y, X, Y))
 
-    # save starting rotation
-    target_rotation = heading if heading is not None else inertial.rotation()
+        # setup
+        wheel_efficiency = 1 / cos(radians(DRIVETRAIN_WHEEL_ANGLES))
+        effective_wheel_size = 220 * wheel_efficiency * DRIVETRAIN_EXTERNAL_GEAR_RATIO
+        turn_speed = 100 # max turn speed in percent
+        target_tolerance = 10 # mm
+        ramp_rate = 1
+        drive_kp = 50.0  # Proportional gain for drive control # 50 / 256
+        drive_kd = 256.0 # Derivative gain for drive control
+        turn_kp = 550.0  # Proportional gain for turn control
+        derivative_alpha = 0.2
+        previous_fwd_error_revs = None
+        previous_strafe_error_revs = None
+        filtered_fwd_derivative = 0.0
+        filtered_strafe_derivative = 0.0
 
-    done = False
-    timeout_count = 0
-    settle_count = 0
-    loop_count = 0
-    is_timeout = False
-    is_settle = False
-    last_fwd = 0
-    last_strafe = 0
-    fwd_ramp_enabled = True
-    strafe_ramp_enabled = True
+        # save starting rotation
+        target_rotation = heading if heading is not None else inertial.rotation()
 
-    while not done:
-        current_rotation = inertial.rotation()
-        rotation_error = (target_rotation - current_rotation) / 360.0 # saturate at 360 degrees
+        done = False
+        timeout_count = 0
+        settle_count = 0
+        loop_count = 0
+        is_timeout = False
+        is_settle = False
+        last_fwd = 0
+        last_strafe = 0
+        fwd_ramp_enabled = True
+        strafe_ramp_enabled = True
 
-        # errors need to be rotated based on heading
+        while not done:
+            current_rotation = inertial.rotation()
+            rotation_error = (target_rotation - current_rotation) / 360.0 # saturate at 360 degrees
 
-        # rotate errors based on current heading
-        rotated_x_error = cos(radians(current_rotation)) * (target_x - X) + sin(radians(current_rotation)) * (target_y - Y)
-        rotated_y_error = -sin(radians(current_rotation)) * (target_x - X) + cos(radians(current_rotation)) * (target_y - Y)
+            # errors need to be rotated based on heading
 
-        average_fwd_error = rotated_x_error
-        average_strafe_error = rotated_y_error
+            # rotate errors based on current heading
+            rotated_x_error = cos(radians(current_rotation)) * (target_x - X) + sin(radians(current_rotation)) * (target_y - Y)
+            rotated_y_error = -sin(radians(current_rotation)) * (target_x - X) + cos(radians(current_rotation)) * (target_y - Y)
 
-        # print("{:0.2f} {:0.2f} {:0.2f} {:0.2f}".format(left_error, right_error, front_error, back_error))
+            average_fwd_error = rotated_x_error
+            average_strafe_error = rotated_y_error
 
-        average_error = average_fwd_error if not strafe else average_strafe_error
-        if abs(average_error) < target_tolerance:
-            settle_count += 1
-        else:
-            settle_count = 0
+            # print("{:0.2f} {:0.2f} {:0.2f} {:0.2f}".format(left_error, right_error, front_error, back_error))
 
-        # convert to approximate motor revolutions based on errors
-        forward_error_revs = (average_fwd_error / effective_wheel_size) # if not strafe else 0
-        strafe_error_revs = (average_strafe_error / effective_wheel_size) # if strafe else 0
-        if previous_fwd_error_revs is None: previous_fwd_error_revs = forward_error_revs
-        if previous_strafe_error_revs is None: previous_strafe_error_revs = strafe_error_revs
+            average_error = average_fwd_error if not strafe else average_strafe_error
+            if abs(average_error) < target_tolerance:
+                settle_count += 1
+            else:
+                settle_count = 0
 
-        raw_fwd_derivative = forward_error_revs - previous_fwd_error_revs
-        raw_strafe_derivative = strafe_error_revs - previous_strafe_error_revs
-        filtered_fwd_derivative += derivative_alpha * (raw_fwd_derivative - filtered_fwd_derivative)
-        filtered_strafe_derivative += derivative_alpha * (raw_strafe_derivative - filtered_strafe_derivative)
+            # convert to approximate motor revolutions based on errors
+            forward_error_revs = (average_fwd_error / effective_wheel_size) # if not strafe else 0
+            strafe_error_revs = (average_strafe_error / effective_wheel_size) # if strafe else 0
+            if previous_fwd_error_revs is None: previous_fwd_error_revs = forward_error_revs
+            if previous_strafe_error_revs is None: previous_strafe_error_revs = strafe_error_revs
 
-        if (timeout_count > timeout): is_timeout = True
-        if (settle_count > 10): is_settle = True
+            raw_fwd_derivative = forward_error_revs - previous_fwd_error_revs
+            raw_strafe_derivative = strafe_error_revs - previous_strafe_error_revs
+            filtered_fwd_derivative += derivative_alpha * (raw_fwd_derivative - filtered_fwd_derivative)
+            filtered_strafe_derivative += derivative_alpha * (raw_strafe_derivative - filtered_strafe_derivative)
 
-        if is_timeout or is_settle:
-            done = True
-            left_front_motor.stop(BRAKE)
-            left_back_motor.stop(BRAKE)
-            right_front_motor.stop(BRAKE)
-            right_back_motor.stop(BRAKE)
-        else:
-            fwd_control = drive_kp * forward_error_revs + drive_kd * filtered_fwd_derivative
-            fwd_control = limit(fwd_control, speed)
-            if abs(fwd_control) < abs(last_fwd): fwd_ramp_enabled = False
-            if fwd_ramp_enabled: fwd_control = ramp_limit(fwd_control, last_fwd, ramp_rate)
-            last_fwd = fwd_control
-            fwd_control_percent = fwd_control
+            if (timeout_count > timeout): is_timeout = True
+            if (settle_count > 10): is_settle = True
 
-            strafe_control = drive_kp * strafe_error_revs + drive_kd * filtered_strafe_derivative
-            strafe_control = limit(strafe_control, speed)
-            if abs(strafe_control) < abs(last_strafe): strafe_ramp_enabled = False
-            if strafe_ramp_enabled: strafe_control = ramp_limit(strafe_control, last_strafe, ramp_rate)
-            last_strafe = strafe_control
-            strafe_control_percent = strafe_control
+            if is_timeout or is_settle:
+                done = True
+                self.lfm.stop(BRAKE)
+                self.lbm.stop(BRAKE)
+                self.rfm.stop(BRAKE)
+                self.rbm.stop(BRAKE)
+            else:
+                fwd_control = drive_kp * forward_error_revs + drive_kd * filtered_fwd_derivative
+                fwd_control = self.limit(fwd_control, speed)
+                if abs(fwd_control) < abs(last_fwd): fwd_ramp_enabled = False
+                if fwd_ramp_enabled: fwd_control = self.ramp_limit(fwd_control, last_fwd, ramp_rate)
+                last_fwd = fwd_control
+                fwd_control_percent = fwd_control
 
-            previous_fwd_error_revs = forward_error_revs
-            previous_strafe_error_revs = strafe_error_revs
+                strafe_control = drive_kp * strafe_error_revs + drive_kd * filtered_strafe_derivative
+                strafe_control = self.limit(strafe_control, speed)
+                if abs(strafe_control) < abs(last_strafe): strafe_ramp_enabled = False
+                if strafe_ramp_enabled: strafe_control = self.ramp_limit(strafe_control, last_strafe, ramp_rate)
+                last_strafe = strafe_control
+                strafe_control_percent = strafe_control
 
-            turn_control = turn_kp * rotation_error
-            turn_control_percent = limit(turn_control, turn_speed)
+                previous_fwd_error_revs = forward_error_revs
+                previous_strafe_error_revs = strafe_error_revs
 
-            left_power = 1.0 # LEFT_POWER_SCALING
-            right_power = 1.0 # RIGHT_POWER_SCALING
-            front_power = 1.0 # FRONT_POWER_SCALING
-            back_power = 1.0 # BACK_POWER_SCALING
+                turn_control = turn_kp * rotation_error
+                turn_control_percent = self.limit(turn_control, turn_speed)
 
-            left_front_speed = fwd_control_percent * right_power + strafe_control_percent * front_power + turn_control_percent
-            left_back_speed = fwd_control_percent * left_power - strafe_control_percent * back_power + turn_control_percent
-            right_front_speed = fwd_control_percent * left_power - strafe_control_percent * front_power - turn_control_percent
-            right_back_speed = fwd_control_percent * right_power + strafe_control_percent * back_power - turn_control_percent
+                left_power = 1.0 # LEFT_POWER_SCALING
+                right_power = 1.0 # RIGHT_POWER_SCALING
+                front_power = 1.0 # FRONT_POWER_SCALING
+                back_power = 1.0 # BACK_POWER_SCALING
 
-            max_speed = max(abs(left_front_speed), abs(left_back_speed), abs(right_front_speed), abs(right_back_speed))
-            if max_speed > 100:
-                left_front_speed = left_front_speed * (100 / max_speed)
-                left_back_speed = left_back_speed * (100 / max_speed)
-                right_front_speed = right_front_speed * (100 / max_speed)
-                right_back_speed = right_back_speed * (100 / max_speed)
+                left_front_speed = fwd_control_percent * right_power + strafe_control_percent * front_power + turn_control_percent
+                left_back_speed = fwd_control_percent * left_power - strafe_control_percent * back_power + turn_control_percent
+                right_front_speed = fwd_control_percent * left_power - strafe_control_percent * front_power - turn_control_percent
+                right_back_speed = fwd_control_percent * right_power + strafe_control_percent * back_power - turn_control_percent
 
-            left_front_motor.spin(FORWARD, left_front_speed, PERCENT)
-            left_back_motor.spin(FORWARD, left_back_speed, PERCENT)
-            right_front_motor.spin(FORWARD, right_front_speed, PERCENT)
-            right_back_motor.spin(FORWARD, right_back_speed, PERCENT)
-            log_motor_commands(left_front_speed, left_back_speed, right_front_speed, right_back_speed)
+                max_speed = max(abs(left_front_speed), abs(left_back_speed), abs(right_front_speed), abs(right_back_speed))
+                if max_speed > 100:
+                    left_front_speed = left_front_speed * (100 / max_speed)
+                    left_back_speed = left_back_speed * (100 / max_speed)
+                    right_front_speed = right_front_speed * (100 / max_speed)
+                    right_back_speed = right_back_speed * (100 / max_speed)
 
-        timeout_count += 1
-        loop_count += 1
-        wait(10, MSEC)
+                self.lfm.spin(FORWARD, left_front_speed, PERCENT)
+                self.lbm.spin(FORWARD, left_back_speed, PERCENT)
+                self.rfm.spin(FORWARD, right_front_speed, PERCENT)
+                self.rbm.spin(FORWARD, right_back_speed, PERCENT)
+                self.log_motor_commands(left_front_speed, left_back_speed, right_front_speed, right_back_speed)
 
-    if not QUIET_MODE:
-        print("drive_to_xy: x={}, y={}, heading={}, time={}, timeout={}, settle={}".format(X, Y, THETA, loop_count * 10, is_timeout, is_settle))
+            timeout_count += 1
+            loop_count += 1
+            wait(10, MSEC)
 
-    return is_timeout, is_settle
+        if not QUIET_MODE:
+            print("drive_to_xy: x={}, y={}, heading={}, time={}, timeout={}, settle={}".format(X, Y, THETA, loop_count * 10, is_timeout, is_settle))
+
+        return is_timeout, is_settle
+
+dt = XDriveTrain(left_front_motor, left_back_motor, right_front_motor, right_back_motor)
 
 # + 30mm at 1440mm
 # + 22mm at 950mm
@@ -990,7 +862,7 @@ def motor_distance_step(current, previous):
     rb = current[3] - previous[3]
     forward = (lf + lb + rf + rb) / 4
     side = (lf - rf - lb + rb) / 4
-    forward = forward * DRIVETRAIN_EXTERNAL_GEAR_RATIO * DRIVETRAIN_WHEEL_SIZE * sqrt(2) * FOWARD_EFFICIENCY
+    forward = forward * DRIVETRAIN_EXTERNAL_GEAR_RATIO * DRIVETRAIN_WHEEL_SIZE * sqrt(2) * dt.FOWARD_EFFICIENCY
     side = side * DRIVETRAIN_EXTERNAL_GEAR_RATIO * DRIVETRAIN_WHEEL_SIZE * sqrt(2)
     return forward, side
 
@@ -1365,7 +1237,7 @@ def log_drivetrain():
     for i in range(TOTAL_SAMPLES):
 
         entry = [inertial.rotation(DEGREES), (back_distance1.object_distance(MM)+back_distance2.object_distance(MM))/2]
-        for motor, cmd_vel in zip(motors, [FLM_COMMAND_VEL, LBM_COMMAND_VEL, FRM_COMMAND_VEL, RBM_COMMAND_VEL]):
+        for motor, cmd_vel in zip(motors, [dt.last_lfm_command_vel, dt.last_lbm_command_vel, dt.last_rfm_command_vel, dt.last_rbm_command_vel]):
             entry.append(cmd_vel)
             if motor is not None:
                 entry.append(motor.position(RotationUnits.REV))
@@ -1481,7 +1353,7 @@ def autonomous_calibration():
     speed = 50
 
     if True:
-        drive_to_xy(300.0, 2750.0, False, speed, heading = 0)
+        dt.drive_to_xy(300.0, 2750.0, False, speed, heading = 0)
 
         while True:
 
@@ -1491,41 +1363,41 @@ def autonomous_calibration():
                     overtemp = True
 
             if overtemp:
-                stop_all()
+                dt.stop_all()
                 wait(1, SECONDS)
                 continue
 
-            drive_to_xy(300.0, 2750 + 400.0, True, speed, heading = 0)
+            dt.drive_to_xy(300.0, 2750 + 400.0, True, speed, heading = 0)
             #wait(500, MSEC)
-            drive_to_xy(300.0 + 200.0, 2750 + 400.0, False, speed, heading = 0)
+            dt.drive_to_xy(300.0 + 200.0, 2750 + 400.0, False, speed, heading = 0)
             #wait(500, MSEC)
-            drive_to_xy(300.0 + 200.0, 2750 - 400.0, True, speed, heading = 0)
+            dt.drive_to_xy(300.0 + 200.0, 2750 - 400.0, True, speed, heading = 0)
             #wait(500, MSEC)
-            drive_to_xy(300.0 + 100, 2750 - 400.0, False, speed, heading = 0)
+            dt.drive_to_xy(300.0 + 100, 2750 - 400.0, False, speed, heading = 0)
             #wait(500, MSEC)
             odom_distance_enable(False, False, False)
-            turn_for(-90, speed)
+            dt.turn_for(-90, speed)
             odom_distance_enable(True, True, False)
             #wait(500, MSEC)
-            drive_to_xy(300.0 + 100, 2750 + 400.0, False, speed, heading = -90)
+            dt.drive_to_xy(300.0 + 100, 2750 + 400.0, False, speed, heading = -90)
             #wait(500, MSEC)
-            drive_to_xy(300.0 + 100, 2750 - 400.0, False, speed, heading = -90)
+            dt.drive_to_xy(300.0 + 100, 2750 - 400.0, False, speed, heading = -90)
             #wait(500, MSEC)
             odom_distance_enable(False, False, False)
-            turn_for(90, speed)
+            dt.turn_for(90, speed)
             odom_distance_enable(True, False, True)
             #wait(500, MSEC)
-            drive_to_xy(300.0, 2750 - 400.0, False, speed, heading = 0)
+            dt.drive_to_xy(300.0, 2750 - 400.0, False, speed, heading = 0)
 
 
     while True:
-        drive_to_xy(900.0, 1800.0, False, 66, heading = 0)
+        dt.drive_to_xy(900.0, 1800.0, False, 66, heading = 0)
         #wait(500, MSEC)
-        drive_to_xy(900.0, 700.0, True, 66, heading = 0)
+        dt.drive_to_xy(900.0, 700.0, True, 66, heading = 0)
         #wait(500, MSEC)
-        drive_to_xy(300.0, 700.0, False, 66, heading = 0)
+        dt.drive_to_xy(300.0, 700.0, False, 66, heading = 0)
         #wait(500, MSEC)
-        drive_to_xy(300.0, 1800.0, True, 66, heading = 0)
+        dt.drive_to_xy(300.0, 1800.0, True, 66, heading = 0)
         #wait(500, MSEC)
         # break
     # ending_distance = average_back_distance()
@@ -1543,25 +1415,25 @@ def autonomous_skills():
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID1)
     wait(500, MSEC)
     # Thread(log_drivetrain)
-    drive_for(51 * 25.4, False, 50, heading = 0)
-    drive_for(-450, True, 50, heading = 0)
+    dt.drive_for(51 * 25.4, False, 50, heading = 0)
+    dt.drive_for(-450, True, 50, heading = 0)
     command_lift(13)
-    drive_for(11 * 25.4, False, 50, timeout = 5000, heading = 0)
+    dt.drive_for(11 * 25.4, False, 50, timeout = 5000, heading = 0)
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID2)
     command_lift(10)
     wait(500, MSEC)
     open_claw()
-    drive_for(-150, False, 50, heading = 0)
+    dt.drive_for(-150, False, 50, heading = 0)
     # TODO: Move back to safe distance
 
 def autonomous_none():
     # place automonous code here
     lower_toggle()
-    drive_for(50, False, 50, heading = 0)
-    drive_for(-50, False, 50, heading = 0)
-    drive_for(50, False, 50, heading = 0)
-    drive_for(-50, False, 50, heading = 0)
-    drive_for(100, False, 50)
+    dt.drive_for(50, False, 50, heading = 0)
+    dt.drive_for(-50, False, 50, heading = 0)
+    dt.drive_for(50, False, 50, heading = 0)
+    dt.drive_for(-50, False, 50, heading = 0)
+    dt.drive_for(100, False, 50)
 
 def claw_move1():
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID1)
@@ -1572,32 +1444,32 @@ def autonomous_left():
     # place automonous code here
 
     lower_toggle()
-    drive_for(50, False, 100, heading = 0)
-    drive_for(-50, False, 100, heading = 0)
-    drive_for(50, False, 100, heading = 0)
-    drive_for(-50, False, 100, heading = 0)
+    dt.drive_for(50, False, 100, heading = 0)
+    dt.drive_for(-50, False, 100, heading = 0)
+    dt.drive_for(50, False, 100, heading = 0)
+    dt.drive_for(-50, False, 100, heading = 0)
     raise_toggle()
 
     Thread(claw_move1)
     wait(250, MSEC)
 
-    drive_to_xy(300, 1800, False, 66, heading = 0)
-    drive_to_xy(300, 2400, True, 66, heading = 0)
+    dt.drive_to_xy(300, 1800, False, 66, heading = 0)
+    dt.drive_to_xy(300, 2400, True, 66, heading = 0)
 
-    drive_for(100, False, 50, heading = 0)
+    dt.drive_for(100, False, 50, heading = 0)
     command_lift(3)
     open_claw()
     wall_distance = average_back_distance()[0] - BACK_DISTANCE_FROM_BACK
     print("Wall distance: {}".format(wall_distance))
     target_distance = 120
     reverse_by = target_distance - wall_distance
-    drive_for(reverse_by, False, 50, heading = 0)
+    dt.drive_for(reverse_by, False, 50, heading = 0)
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
     command_lift(0)
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 180
-    turn_for(target_heading - current_heading, 100)
+    dt.turn_for(target_heading - current_heading, 100)
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID3)
     wait(250, MSEC)
     close_claw()
@@ -1606,15 +1478,15 @@ def autonomous_left():
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 0
-    turn_for(target_heading - current_heading, 100)
+    dt.turn_for(target_heading - current_heading, 100)
     command_lift(11)
-    drive_for(-reverse_by+20, False, 50, heading = 0)
+    dt.drive_for(-reverse_by+20, False, 50, heading = 0)
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID1)
     wait(250, MSEC)
     command_lift(9)
     open_claw()
     wait(250, MSEC)
-    drive_for(reverse_by, False, 50, heading = 0)
+    dt.drive_for(reverse_by, False, 50, heading = 0)
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
     command_lift(0)
 
@@ -1622,28 +1494,28 @@ def autonomous_right():
     # place automonous code here
 
     lower_toggle()
-    drive_for(50, False, 50, heading = 0)
-    drive_for(-50, False, 50, heading = 0)
-    drive_for(50, False, 50, heading = 0)
-    drive_for(-50, False, 50, heading = 0)
+    dt.drive_for(50, False, 50, heading = 0)
+    dt.drive_for(-50, False, 50, heading = 0)
+    dt.drive_for(50, False, 50, heading = 0)
+    dt.drive_for(-50, False, 50, heading = 0)
     raise_toggle()
 
     Thread(claw_move1)
     wait(250,MSEC)
-    drive_for(100, False, 50, heading = 0)
-    drive_for(-700, True, 50, heading = 0)
-    drive_for(100, False, 50, heading = 0)
+    dt.drive_for(100, False, 50, heading = 0)
+    dt.drive_for(-700, True, 50, heading = 0)
+    dt.drive_for(100, False, 50, heading = 0)
     command_lift(3)
     open_claw()
     wall_distance = average_back_distance()[0] - BACK_DISTANCE_FROM_BACK
     target_distance = 120 
     reverse_by = target_distance - wall_distance
-    drive_for(reverse_by, False, 50, heading = 0)
+    dt.drive_for(reverse_by, False, 50, heading = 0)
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
     command_lift(0)
     current_heading = inertial.rotation()
     target_heading = 180
-    turn_for(target_heading - current_heading, 66)
+    dt.turn_for(target_heading - current_heading, 66)
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID3)
     wait(250, MSEC)
     close_claw()
@@ -1651,15 +1523,15 @@ def autonomous_right():
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
     current_heading = inertial.rotation()
     target_heading = 0
-    turn_for(target_heading - current_heading, 66)
+    dt.turn_for(target_heading - current_heading, 66)
     command_lift(11)
-    drive_for(-reverse_by+20, False, 50, heading = 0)
+    dt.drive_for(-reverse_by+20, False, 50, heading = 0)
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID1)
     wait(250, MSEC)
     command_lift(9)
     open_claw()
     wait(250, MSEC)
-    drive_for(reverse_by, False, 50, heading = 0)
+    dt.drive_for(reverse_by, False, 50, heading = 0)
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
     command_lift(0)
 
@@ -1821,6 +1693,8 @@ def OnControlButtonBPressed():
         raise_toggle()
 
 def OnControlButtonUpPressed():
+    global ROBOT_ENABLED
+
     pressed_counter = 0
     while pressed_counter < 30:
         wait(100, MSEC)
@@ -1828,7 +1702,13 @@ def OnControlButtonUpPressed():
             return
         pressed_counter += 1
     # Button has been held for 30 cycles (3 seconds)
+    ROBOT_ENABLED = False
+    if motor_monitor is not None: motor_monitor.mute(True)
     robot_config.configuration_UI()
+    ROBOT_ENABLED = True
+    if motor_monitor is not None:
+        motor_monitor.mute(False)
+        motor_monitor.refresh()
 
 samples = []
 
@@ -1953,7 +1833,7 @@ MOTOR_FREE_SPEED_RPM = 600.0 # 6:1 cartridge
 # Distance the wheel surface travels per motor revolution
 MM_PER_MOTOR_REV_SURFACE = DRIVETRAIN_EXTERNAL_GEAR_RATIO * DRIVETRAIN_WHEEL_SIZE
 # 45 degree rollers mean the chassis travels sqrt(2) times that (matches motor_distance_step)
-MM_PER_MOTOR_REV_CHASSIS = MM_PER_MOTOR_REV_SURFACE * sqrt(2) * FOWARD_EFFICIENCY
+MM_PER_MOTOR_REV_CHASSIS = MM_PER_MOTOR_REV_SURFACE * sqrt(2) * dt.FOWARD_EFFICIENCY
 DRIVE_RADIUS = 13.6 * 25.4 / 2.0 # mm, centre of robot to wheel contact patch
 MAX_ROBOT_SPEED = MOTOR_FREE_SPEED_RPM / 60.0 * MM_PER_MOTOR_REV_CHASSIS # mm/s
 MAX_ROBOT_TURN_RATE = degrees(MOTOR_FREE_SPEED_RPM / 60.0 * MM_PER_MOTOR_REV_SURFACE / DRIVE_RADIUS) # deg/s
@@ -2081,8 +1961,8 @@ class DriveMotionModel:
         if abs(command) < self.COMMAND_THRESHOLD:
             return 0.0, 0.0
         if allow_integral:
-            integral = limit(integral + error * ki * dt, self.MAX_INTEGRAL_TRIM)
-        return limit(error * kp + integral, max_trim), integral
+            integral = dt.limit(integral + error * ki * dt, self.MAX_INTEGRAL_TRIM)
+        return dt.limit(error * kp + integral, max_trim), integral
 
     def _update_authority(self):
         slip = max(abs(self.wheel_forward - self.measured_forward) / MAX_ROBOT_SPEED,
@@ -2256,13 +2136,13 @@ def user_control():
 
         # Ramp control - forward
         ramp_max = MAX_RANP - RAMP_RANGE * lift_height(percent=True) / 100
-        safe_forward = ramp_limit(raw_forward, last_forward, ramp_max)
+        safe_forward = dt.ramp_limit(raw_forward, last_forward, ramp_max)
         forward = safe_forward
         last_forward = forward
 
         # Ramp control - strafe
         ramp_max = MAX_RANP - RAMP_RANGE * lift_height(percent=True) / 100
-        safe_strafe = ramp_limit(raw_strafe, last_strafe, ramp_max)
+        safe_strafe = dt.ramp_limit(raw_strafe, last_strafe, ramp_max)
         strafe = safe_strafe
         last_strafe = strafe
 
