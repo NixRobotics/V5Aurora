@@ -32,7 +32,7 @@ from math import radians, degrees, cos, asin, sin, sqrt, pi
 ### SETUP DEFAULT ALLIANCE AND AUTONOMOUS SEQUENCE HERE
 # ------------------------------------------------------------ #
 
-CALIBRATION = True
+CALIBRATION = False
 
 ALLIANCE_COLOR = AllianceColor.RED
 # ALLIANCE_COLOR = AllianceColor.BLUE
@@ -1159,6 +1159,11 @@ def odom_distance_enable(back, left, right):
     ENABLE_LEFT_DISTANCE = left
     ENABLE_RIGHT_DISTANCE = right
 
+def odom_print():
+    if not QUIET_MODE:
+        print("X: {:4.0f}/{:0.1f}, Y: {:4.0f}/{:0.1f}, H: {:3.2f}".format(X, Pxx, Y, Pyy, THETA % 360.0))
+
+
 def odom_thread():
     global X, Y, THETA, Pxx, Pyy
     THETA = inertial.rotation()
@@ -1213,8 +1218,8 @@ def odom_thread():
 
         Pxx, Pyy = filter.Pxx, filter.Pyy
 
-        if not QUIET_MODE and count % 200 == 0:
-            print("X: {:4.0f}, Y: {:4.0f}, H: {:3.2f}".format(X, Y, THETA % 360.0))
+        if count % 200 == 0:
+            odom_print()
 
         count += 1
 
@@ -1443,6 +1448,10 @@ def claw_move1():
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID1)
     command_lift(5)
 
+def claw_move2():
+    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
+    command_lift(0)
+
 # Score 7 pins, 3 goals with 2 pins
 def autonomous_left():
     # place automonous code here
@@ -1458,7 +1467,9 @@ def autonomous_left():
     wait(250, MSEC)
 
     dt.drive_to_xy(300, 1800, False, 66, heading = 0)
+    odom_print()
     dt.drive_to_xy(300, 2400, True, 66, heading = 0)
+    odom_print()
 
     dt.drive_for(100, False, 50, heading = 0)
     command_lift(3)
@@ -1491,8 +1502,8 @@ def autonomous_left():
     open_claw()
     wait(250, MSEC)
     dt.drive_for(reverse_by, False, 50, heading = 0)
-    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
-    command_lift(0)
+    Thread(claw_move2)
+    dt.drive_to_xy(300, 1200, False, 100, heading = 0)
 
 def autonomous_right():
     # place automonous code here
