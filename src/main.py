@@ -445,11 +445,20 @@ class XDriveTrain():
         self.last_rfm_command_vel = 0
         self.last_rbm_command_vel = 0
 
+        self.last_fwd_command = 0
+        self.last_strafe_command = 0
+        self.last_turn_command = 0
+
     def log_motor_commands(self, lfm_vel, lbm_vel, rfm_vel, rbm_vel):
         self.last_lfm_command_vel = lfm_vel
         self.last_lbm_command_vel = lbm_vel
         self.last_rfm_command_vel = rfm_vel
         self.last_rbm_command_vel = rbm_vel
+
+    def log_drive_commands(self, fwd, strafe, turn):
+        self.last_fwd_command = fwd
+        self.last_strafe_command = strafe
+        self.last_turn_command = turn
 
     @staticmethod
     def limit(input, limit_value):
@@ -512,6 +521,7 @@ class XDriveTrain():
                 self.rfm.spin(REVERSE, turn_control, PERCENT)
                 self.rbm.spin(REVERSE, turn_control, PERCENT)
                 self.log_motor_commands(turn_control, turn_control, -turn_control, -turn_control)
+                self.log_drive_commands(0, 0, turn_control)
 
             timeout_count += 1
             loop_count += 1
@@ -638,6 +648,7 @@ class XDriveTrain():
                 self.rfm.spin(FORWARD, right_front_speed, PERCENT)
                 self.rbm.spin(FORWARD, right_back_speed, PERCENT)
                 self.log_motor_commands(left_front_speed, left_back_speed, right_front_speed, right_back_speed)
+                self.log_drive_commands(fwd_control_percent, strafe_control_percent, turn_control_percent)
 
             timeout_count += 1
             loop_count += 1
@@ -773,6 +784,7 @@ class XDriveTrain():
                 self.rfm.spin(FORWARD, right_front_speed, PERCENT)
                 self.rbm.spin(FORWARD, right_back_speed, PERCENT)
                 self.log_motor_commands(left_front_speed, left_back_speed, right_front_speed, right_back_speed)
+                self.log_drive_commands(fwd_control_percent, strafe_control_percent, turn_control_percent)
 
             timeout_count += 1
             loop_count += 1
