@@ -69,20 +69,26 @@ HIDDEN_PERIMITER = 15 #mm
 
 # at 592 - back1 reads 595.3, back2 reads 590.9
 BACK_DISTANCE_COMPENSATION = 1500 / 1525
-BACK_DISTANCE_FROM_BACK = 66 # mm
-back_distance1 = Distance(Ports.PORT4)
-back_distance2 = Distance(Ports.PORT9)
+BACK_DISTANCE1_FROM_BACK = 75 # mm
+BACK_DISTANCE2_FROM_BACK = 69 # mm
+BACK_DISTANCE1_CLOSE_ERROR = 0 # mm (at 145mm reads 145mm)
+BACK_DISTANCE2_CLOSE_ERROR = 6 #mm (at 145mm reads 151mm)
+back_distance1 = Distance(Ports.PORT4) # left side
+back_distance2 = Distance(Ports.PORT9) # right side
 
-ROBOT_WIDTH = 15 * 25.4 # (mm)
-ROBOT_LENGTH = 185 * 2 # (mm) 185 measured from back wall to center line
+ROBOT_WIDTH = 192 * 2 # (mm)
+ROBOT_LENGTH = 183 * 2 # (mm) 185 measured from back wall to center line
 
-LEFT_DISTANCE_DISTABLE = True
 LEFT_DISTANCE_COMPENSATION = 1.0
-LEFT_DISTANCE_FROM_LEFT = 10 # mm
+LEFT_DISTANCE_FROM_LEFT = 5 # mm
+LEFT_DISTANCE_CLOSE_ERROR = -15 # mm (at 145mm reads 130mm, at 200mm reads 185mm, at 250mm reads 250mm, at 295mm reads 295mm)
+LEFT_DISTANCE_FAR_ERROR = 0 # mm roughly at 250mm
+LEFT_DISTANCE_FAR_TRANSITION = 250 # mm
 left_distance = Distance(Ports.PORT6)
 
 RIGHT_DISTANCE_COMPENSATION = 1.0
-RIGHT_DISTANCE_FROM_RIGHT = 10 # mm
+RIGHT_DISTANCE_FROM_RIGHT = 5 # mm
+RIGHT_DISTANCE_CLOSE_ERROR = 0 # mm (at 145mm reads 145mm)
 right_distance = Distance(Ports.PORT8)
 
 ROTATION_SIDE_WHEEL_SIZE = 2 * 25.4 * pi # mm circumference
@@ -819,14 +825,14 @@ def average_back_distance(samples=10):
     
     for _ in range(samples):
         if back_distance1.is_object_detected():
-            back1_value = back_distance1.object_distance(MM)
+            back1_value = back_distance1.object_distance(MM) - BACK_DISTANCE1_CLOSE_ERROR
             back1_count += 1
             back1_distance += back1_value
         else:
             back1_value = None
 
         if back_distance2.is_object_detected():
-            back2_value = back_distance2.object_distance(MM)
+            back2_value = back_distance2.object_distance(MM) - BACK_DISTANCE2_CLOSE_ERROR
             back2_count += 1
             back2_distance += back2_value
         else:
@@ -995,6 +1001,9 @@ def initialize_distances():
     previous_right_distance[1] = right_distance.timestamp()
 
 def filter_distance(heading, tolerance):
+    if heading < 0 or heading >= 360:
+        raise ValueError("filter_distance(): Heading must be in the range [0, 360).")
+    
     if heading > 360 - tolerance or heading < tolerance:
         return True
     elif heading > 90 - tolerance and heading < 90 + tolerance:
@@ -1005,10 +1014,10 @@ def filter_distance(heading, tolerance):
         return True
     return False
     
-def get_back_distance():
+def get_back_distance(heading):
     global previous_back_distance
 
-    if not filter_distance(THETA, 5):
+    if not filter_distance(heading, 5):
         return None
 
     new_back1_timestamp = back_distance1.timestamp()
@@ -1018,27 +1027,29 @@ def get_back_distance():
 
     if max_timestamp > previous_back_distance[1]:
         if not back_distance1.is_object_detected() or not back_distance2.is_object_detected(): return None
-        new_back1 = back_distance1.object_distance(MM)
-        new_back2 = back_distance2.object_distance(MM)
+        new_back1 = back_distance1.object_distance(MM) - BACK_DISTANCE1_CLOSE_ERROR
+        new_back2 = back_distance2.object_distance(MM) - BACK_DISTANCE2_CLOSE_ERROR
         new_back_distance_value = (new_back1 + new_back2) / 2.0
         new_back_distance_timestamp = max_timestamp
         previous_back_distance[0] = new_back_distance_value
         previous_back_distance[1] = new_back_distance_timestamp
 
-        if new_back_distance_value > 1200.0:
+        if new_back_distance_value > 1700.0:
             return None
         
         return new_back_distance_value
 
     return None
 
-def get_left_distance():
+def logistic_error(d, error, midpoint = 175, steepness = 0.05):
+    # Midpoint at 175mm, steepness 0.05
+    # Uses math.exp instead of np.exp
+    return error / (1 + math.exp(steepness * (d - midpoint)))
+
+def get_left_distance(heading):
     global previous_left_distance
 
-    if LEFT_DISTANCE_DISTABLE:
-        return None
-
-    if not filter_distance(THETA, 5):
+    if not filter_distance(heading, 5):
         return None
 
     loader_offset = 0
@@ -1051,6 +1062,8 @@ def get_left_distance():
     if new_left_timestamp > previous_left_distance[1]:
         if not left_distance.is_object_detected(): return None
         new_left_distance_value = left_distance.object_distance(MM)
+        error = logistic_error(new_left_distance_value, LEFT_DISTANCE_CLOSE_ERROR)
+        new_left_distance_value -= error
         new_left_distance_timestamp = new_left_timestamp
         previous_left_distance[0] = new_left_distance_value
         previous_left_distance[1] = new_left_distance_timestamp
@@ -1063,10 +1076,10 @@ def get_left_distance():
 
     return None
 
-def get_right_distance():
+def get_right_distance(heading):
     global previous_right_distance
 
-    if not filter_distance(THETA, 5):
+    if not filter_distance(heading, 5):
         return None
 
     loader_offset = 0
@@ -1078,7 +1091,7 @@ def get_right_distance():
 
     if new_right_timestamp > previous_right_distance[1]:
         if not right_distance.is_object_detected(): return None
-        new_right_distance_value = right_distance.object_distance(MM)
+        new_right_distance_value = right_distance.object_distance(MM) - RIGHT_DISTANCE_CLOSE_ERROR
         new_right_distance_timestamp = new_right_timestamp
         previous_right_distance[0] = new_right_distance_value
         previous_right_distance[1] = new_right_distance_timestamp
@@ -1112,7 +1125,7 @@ def predict_wheels():
     if delta_rotation_side is not None:
         delta_side = delta_rotation_side
         # positive forward offset means recorded radius is smaller than at center of robot for forward turns, so subtract offset
-        side_offset = -ROTATION_SIDE_WHEEL_OFFSET
+        side_offset = ROTATION_SIDE_WHEEL_OFFSET
     else:
         delta_side = delta_motor_side
         side_offset = 0.0
@@ -1192,9 +1205,10 @@ def odom_thread():
         # the walls can only be guaranteed unobstructed during autonomous
         heading = compass_heading(THETA)
 
-        meas_back_distance = get_back_distance()
+        meas_back_distance = get_back_distance(heading)
         if ENABLE_BACK_DISTANCE and meas_back_distance is not None:
-            meas_back_distance += HIDDEN_PERIMITER + ROBOT_LENGTH / 2 - BACK_DISTANCE_FROM_BACK
+            meas_back_distance -= (BACK_DISTANCE1_FROM_BACK + BACK_DISTANCE2_FROM_BACK) / 2 # subtract distance to back of robot
+            meas_back_distance += HIDDEN_PERIMITER + ROBOT_LENGTH / 2 # add the hidden perimeter and half the robot length
             if heading == NORTH:
                 X, Y = filter.update_x(meas_back_distance)
             elif heading == SOUTH:
@@ -1204,7 +1218,7 @@ def odom_thread():
             elif heading == EAST:
                 X, Y = filter.update_y(meas_back_distance)
 
-        meas_right_distance = get_right_distance()
+        meas_right_distance = get_right_distance(heading)
         if ENABLE_RIGHT_DISTANCE and meas_right_distance is not None:
             meas_right_distance += HIDDEN_PERIMITER + ROBOT_WIDTH / 2 - RIGHT_DISTANCE_FROM_RIGHT
             if heading == NORTH:
@@ -1216,7 +1230,7 @@ def odom_thread():
             elif heading == EAST:
                 X, Y = filter.update_x(meas_right_distance)
 
-        meas_left_distance = get_left_distance()
+        meas_left_distance = get_left_distance(heading)
         if ENABLE_LEFT_DISTANCE and meas_left_distance is not None:
             meas_left_distance += HIDDEN_PERIMITER + ROBOT_WIDTH / 2 - LEFT_DISTANCE_FROM_LEFT
             if heading == NORTH:
@@ -1305,8 +1319,8 @@ def log_odom():
 
     # Run ramp test
 
-    TOTAL_SAMPLES = 450
-    PRINT_DELAY = 333 # ms between samples. Set to around 250 for wireless or 50 for USB
+    TOTAL_SAMPLES = 500
+    PRINT_DELAY = 250 # ms between samples. Set to around 250 for wireless or 50 for USB
 
     for i in range(TOTAL_SAMPLES):
 
@@ -1361,6 +1375,13 @@ def autonomous_calibration():
     # place automonous code here
     starting_distance, starting_angle = average_back_distance()
     #print("Back distance: {}".format(starting_distance))
+
+    #odom_distance_enable(False, False, False)
+    #wait(100, MSEC)
+    #dt.turn_for(90, 25)
+    #wait(100, MSEC)
+    #return
+
     odom_distance_enable(True, False, True)
 
     wait(100, MSEC)
@@ -1370,6 +1391,7 @@ def autonomous_calibration():
     # return
 
     speed = 33
+    turn_speed = 75
 
     if True:
         dt.drive_to_xy(300.0, 2750.0, False, speed, heading = 0)
@@ -1399,18 +1421,18 @@ def autonomous_calibration():
             #wait(500, MSEC)
             dt.drive_to_xy(300.0 + 100, 2750 - 400.0, False, speed, heading = 0)
             #wait(500, MSEC)
-            if use_distance: odom_distance_enable(False, False, False)
-            dt.turn_for(-90, speed)
-            if use_distance: odom_distance_enable(True, True, False)
-            #wait(500, MSEC)
             Thread(log_odom)
             wait(100, MSEC)
+            if use_distance: odom_distance_enable(False, False, False)
+            dt.turn_for(-90, turn_speed)
+            if use_distance: odom_distance_enable(True, True, False)
+            #wait(500, MSEC)
             dt.drive_to_xy(300.0 + 100, 2750 + 400.0, False, speed, heading = -90)
             #wait(500, MSEC)
             dt.drive_to_xy(300.0 + 100, 2750 - 400.0, False, speed, heading = -90)
             #wait(500, MSEC)
             if use_distance: odom_distance_enable(False, False, False)
-            dt.turn_for(90, speed)
+            dt.turn_for(90, turn_speed)
             if use_distance: odom_distance_enable(True, False, True)
             #wait(500, MSEC)
             dt.drive_to_xy(300.0, 2750 - 400.0, False, speed, heading = 0)
@@ -1491,7 +1513,7 @@ def autonomous_left():
     dt.drive_for(100, False, 50, heading = 0)
     command_lift(3)
     open_claw()
-    wall_distance = average_back_distance()[0] - BACK_DISTANCE_FROM_BACK
+    wall_distance = average_back_distance()[0] - (BACK_DISTANCE1_FROM_BACK + BACK_DISTANCE2_FROM_BACK) / 2
     print("Wall distance: {}".format(wall_distance))
     target_distance = 120
     reverse_by = target_distance - wall_distance
@@ -1539,7 +1561,7 @@ def autonomous_right():
     dt.drive_for(100, False, 50, heading = 0)
     command_lift(3)
     open_claw()
-    wall_distance = average_back_distance()[0] - BACK_DISTANCE_FROM_BACK
+    wall_distance = average_back_distance()[0] - (BACK_DISTANCE1_FROM_BACK + BACK_DISTANCE2_FROM_BACK) / 2
     target_distance = 120 
     reverse_by = target_distance - wall_distance
     dt.drive_for(reverse_by, False, 50, heading = 0)
@@ -2279,9 +2301,13 @@ def user_control():
 
         wait(10, MSEC)
 
-        # if loop_count % 100 == 0:
-            #print("Lift {}".format(lift_motor.position(DEGREES)))
-            # print("Rotation: {:.1f}".format(inertial.rotation(DEGREES)))
+        '''
+        if loop_count % 500 == 0:
+            print("Back1: {}".format(back_distance1.object_distance(MM) - BACK_DISTANCE1_FROM_BACK - BACK_DISTANCE1_CLOSE_ERROR + ROBOT_LENGTH / 2))
+            print("Back2: {}".format(back_distance2.object_distance(MM) - BACK_DISTANCE2_FROM_BACK - BACK_DISTANCE2_CLOSE_ERROR + ROBOT_LENGTH / 2))
+            print("Left: {}".format(left_distance.object_distance(MM) - LEFT_DISTANCE_FROM_LEFT - LEFT_DISTANCE_CLOSE_ERROR + ROBOT_WIDTH / 2))
+            print("Right: {}".format(right_distance.object_distance(MM) - RIGHT_DISTANCE_FROM_RIGHT - RIGHT_DISTANCE_CLOSE_ERROR + ROBOT_WIDTH / 2))
+        '''
 
         loop_count += 1
 
