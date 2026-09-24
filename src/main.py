@@ -32,7 +32,7 @@ from math import radians, degrees, cos, asin, sin, sqrt, pi
 ### SETUP DEFAULT ALLIANCE AND AUTONOMOUS SEQUENCE HERE
 # ------------------------------------------------------------ #
 
-CALIBRATION = False
+CALIBRATION = True
 
 ALLIANCE_COLOR = AllianceColor.RED
 # ALLIANCE_COLOR = AllianceColor.BLUE
@@ -1306,11 +1306,14 @@ def log_odom():
     # Run ramp test
 
     TOTAL_SAMPLES = 450
-    PRINT_DELAY = 250 # ms between samples. Set to around 250 for wireless or 50 for USB
+    PRINT_DELAY = 333 # ms between samples. Set to around 250 for wireless or 50 for USB
 
     for i in range(TOTAL_SAMPLES):
 
         entry = [
+            dt.last_fwd_command,
+            dt.last_strafe_command,
+            dt.last_turn_command,
             previous_rotation_positions[0] * ROTATION_FWD_WHEEL_SIZE,
             previous_rotation_positions[1] * ROTATION_FWD_WHEEL_SIZE,
             previous_left_distance[0],
@@ -1328,7 +1331,7 @@ def log_odom():
     QUIET_MODE = True
     wait(100, MSEC)
 
-    output = "idx, fwd, side, left, right, back, X, Y, THETA, Pxx, Pyy"
+    output = "idx, drive, strafe, turn, fwd, side, left, right, back, X, Y, THETA, Pxx, Pyy"
     print(output)
 
     for i in range(TOTAL_SAMPLES):
@@ -1366,7 +1369,7 @@ def autonomous_calibration():
     # wait(100, MSEC)
     # return
 
-    speed = 66
+    speed = 33
 
     if True:
         dt.drive_to_xy(300.0, 2750.0, False, speed, heading = 0)
@@ -1400,6 +1403,8 @@ def autonomous_calibration():
             dt.turn_for(-90, speed)
             if use_distance: odom_distance_enable(True, True, False)
             #wait(500, MSEC)
+            Thread(log_odom)
+            wait(100, MSEC)
             dt.drive_to_xy(300.0 + 100, 2750 + 400.0, False, speed, heading = -90)
             #wait(500, MSEC)
             dt.drive_to_xy(300.0 + 100, 2750 - 400.0, False, speed, heading = -90)
