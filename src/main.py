@@ -675,16 +675,19 @@ class XDriveTrain():
     def drive_to_xy(self, target_x, target_y, strafe=False, speed=100, heading=None, timeout=10000): # distance is in mm, speed is in percent
 
         if not QUIET_MODE:
-            print("Driving to X: {}, Y: {} from X: {}, Y: {}".format(target_x, target_y, X, Y))
+            print("Driving to X: {}, Y: {} from X: {}, Y: {}, is_strafe={}".format(target_x, target_y, X, Y, strafe))
 
         # setup
         wheel_efficiency = 1 / cos(radians(DRIVETRAIN_WHEEL_ANGLES))
         effective_wheel_size = 220 * wheel_efficiency * DRIVETRAIN_EXTERNAL_GEAR_RATIO
         turn_speed = 100 # max turn speed in percent
+        lateral_speed = 100 # max lateral speed in percent (this is the perpenicular speed to the commanded direction)
         target_tolerance = 10 # mm
-        ramp_rate = 1
-        drive_kp = 50.0  # Proportional gain for drive control # 50 / 256
-        drive_kd = 256.0 # Derivative gain for drive control
+        ramp_rate = 1 # percent of increase per loop iteration (10ms loop)
+        major_kp = 50.0  # Proportional gain for the major (along track) direction control # 50 / 256
+        major_kd = 256.0 # Derivative gain for major (along track) direction control
+        minor_kp = 25.0  # Proportional gain for the minor (cross track) direction control
+        minor_kd = 0.0 # Derivative gain for minor (cross tracks) direction control
         turn_kp = 550.0  # Proportional gain for turn control
         derivative_alpha = 0.2
         previous_fwd_error_revs = None
@@ -748,15 +751,32 @@ class XDriveTrain():
                 self.rfm.stop(BRAKE)
                 self.rbm.stop(BRAKE)
             else:
+                if not strafe:
+                    drive_kp = major_kp
+                    drive_kd = major_kd
+                    drive_speed = speed
+                else:
+                    drive_kp = minor_kp
+                    drive_kd = minor_kd
+                    drive_speed = lateral_speed
                 fwd_control = drive_kp * forward_error_revs + drive_kd * filtered_fwd_derivative
-                fwd_control = self.limit(fwd_control, speed)
+                fwd_control = self.limit(fwd_control, drive_speed)
                 if abs(fwd_control) < abs(last_fwd): fwd_ramp_enabled = False
                 if fwd_ramp_enabled: fwd_control = self.ramp_limit(fwd_control, last_fwd, ramp_rate)
                 last_fwd = fwd_control
                 fwd_control_percent = fwd_control
 
-                strafe_control = drive_kp * strafe_error_revs + drive_kd * filtered_strafe_derivative
-                strafe_control = self.limit(strafe_control, speed)
+
+                if strafe:
+                    strafe_kp = major_kp
+                    strafe_kd = major_kd
+                    strafe_speed = speed
+                else:
+                    strafe_kp = minor_kp
+                    strafe_kd = minor_kd
+                    strafe_speed = lateral_speed
+                strafe_control = strafe_kp * strafe_error_revs + strafe_kd * filtered_strafe_derivative
+                strafe_control = self.limit(strafe_control, strafe_speed)
                 if abs(strafe_control) < abs(last_strafe): strafe_ramp_enabled = False
                 if strafe_ramp_enabled: strafe_control = self.ramp_limit(strafe_control, last_strafe, ramp_rate)
                 last_strafe = strafe_control
@@ -1062,7 +1082,11 @@ def get_left_distance(heading):
     if new_left_timestamp > previous_left_distance[1]:
         if not left_distance.is_object_detected(): return None
         new_left_distance_value = left_distance.object_distance(MM)
-        error = logistic_error(new_left_distance_value, LEFT_DISTANCE_CLOSE_ERROR)
+        try:
+            error = logistic_error(new_left_distance_value, LEFT_DISTANCE_CLOSE_ERROR)
+        except Exception as e:
+            print("Error calculating logistic error: {}, {}".format(e, new_left_distance_value))
+            error = 0
         new_left_distance_value -= error
         new_left_distance_timestamp = new_left_timestamp
         previous_left_distance[0] = new_left_distance_value
@@ -1205,42 +1229,45 @@ def odom_thread():
         # the walls can only be guaranteed unobstructed during autonomous
         heading = compass_heading(THETA)
 
-        meas_back_distance = get_back_distance(heading)
-        if ENABLE_BACK_DISTANCE and meas_back_distance is not None:
-            meas_back_distance -= (BACK_DISTANCE1_FROM_BACK + BACK_DISTANCE2_FROM_BACK) / 2 # subtract distance to back of robot
-            meas_back_distance += HIDDEN_PERIMITER + ROBOT_LENGTH / 2 # add the hidden perimeter and half the robot length
-            if heading == NORTH:
-                X, Y = filter.update_x(meas_back_distance)
-            elif heading == SOUTH:
-                X, Y = filter.update_x(3600.0 - meas_back_distance)
-            elif heading == WEST:
-                X, Y = filter.update_y(3600.0 - meas_back_distance)
-            elif heading == EAST:
-                X, Y = filter.update_y(meas_back_distance)
+        if ENABLE_BACK_DISTANCE:
+            meas_back_distance = get_back_distance(heading)
+            if meas_back_distance is not None:
+                meas_back_distance -= (BACK_DISTANCE1_FROM_BACK + BACK_DISTANCE2_FROM_BACK) / 2 # subtract distance to back of robot
+                meas_back_distance += HIDDEN_PERIMITER + ROBOT_LENGTH / 2 # add the hidden perimeter and half the robot length
+                if heading == NORTH:
+                    X, Y = filter.update_x(meas_back_distance)
+                elif heading == SOUTH:
+                    X, Y = filter.update_x(3600.0 - meas_back_distance)
+                elif heading == WEST:
+                    X, Y = filter.update_y(3600.0 - meas_back_distance)
+                elif heading == EAST:
+                    X, Y = filter.update_y(meas_back_distance)
 
-        meas_right_distance = get_right_distance(heading)
-        if ENABLE_RIGHT_DISTANCE and meas_right_distance is not None:
-            meas_right_distance += HIDDEN_PERIMITER + ROBOT_WIDTH / 2 - RIGHT_DISTANCE_FROM_RIGHT
-            if heading == NORTH:
-                X, Y = filter.update_y(3600.0 - meas_right_distance)
-            elif heading == SOUTH:
-                X, Y = filter.update_y(meas_right_distance)
-            elif heading == WEST:
-                X, Y = filter.update_x(3600.0 - meas_right_distance)
-            elif heading == EAST:
-                X, Y = filter.update_x(meas_right_distance)
+        if ENABLE_RIGHT_DISTANCE:
+            meas_right_distance = get_right_distance(heading)
+            if meas_right_distance is not None:
+                meas_right_distance += HIDDEN_PERIMITER + ROBOT_WIDTH / 2 - RIGHT_DISTANCE_FROM_RIGHT
+                if heading == NORTH:
+                    X, Y = filter.update_y(3600.0 - meas_right_distance)
+                elif heading == SOUTH:
+                    X, Y = filter.update_y(meas_right_distance)
+                elif heading == WEST:
+                    X, Y = filter.update_x(3600.0 - meas_right_distance)
+                elif heading == EAST:
+                    X, Y = filter.update_x(meas_right_distance)
 
-        meas_left_distance = get_left_distance(heading)
-        if ENABLE_LEFT_DISTANCE and meas_left_distance is not None:
-            meas_left_distance += HIDDEN_PERIMITER + ROBOT_WIDTH / 2 - LEFT_DISTANCE_FROM_LEFT
-            if heading == NORTH:
-                X, Y = filter.update_y(meas_left_distance)
-            elif heading == SOUTH:
-                X, Y = filter.update_y(3600.0 - meas_left_distance)
-            elif heading == WEST:
-                X, Y = filter.update_x(meas_left_distance)
-            elif heading == EAST:
-                X, Y = filter.update_x(3600.0 - meas_left_distance)
+        if ENABLE_LEFT_DISTANCE:
+            meas_left_distance = get_left_distance(heading)
+            if meas_left_distance is not None:
+                meas_left_distance += HIDDEN_PERIMITER + ROBOT_WIDTH / 2 - LEFT_DISTANCE_FROM_LEFT
+                if heading == NORTH:
+                    X, Y = filter.update_y(meas_left_distance)
+                elif heading == SOUTH:
+                    X, Y = filter.update_y(3600.0 - meas_left_distance)
+                elif heading == WEST:
+                    X, Y = filter.update_x(meas_left_distance)
+                elif heading == EAST:
+                    X, Y = filter.update_x(3600.0 - meas_left_distance)
 
         Pxx, Pyy = filter.Pxx, filter.Pyy
 
@@ -1390,8 +1417,9 @@ def autonomous_calibration():
     # wait(100, MSEC)
     # return
 
-    speed = 33
+    speed = 25
     turn_speed = 75
+    first_run = True
 
     if True:
         dt.drive_to_xy(300.0, 2750.0, False, speed, heading = 0)
@@ -1421,8 +1449,10 @@ def autonomous_calibration():
             #wait(500, MSEC)
             dt.drive_to_xy(300.0 + 100, 2750 - 400.0, False, speed, heading = 0)
             #wait(500, MSEC)
-            Thread(log_odom)
-            wait(100, MSEC)
+            if first_run:
+                # Thread(log_odom)
+                wait(100, MSEC)
+                first_run = False
             if use_distance: odom_distance_enable(False, False, False)
             dt.turn_for(-90, turn_speed)
             if use_distance: odom_distance_enable(True, True, False)
@@ -1436,6 +1466,10 @@ def autonomous_calibration():
             if use_distance: odom_distance_enable(True, False, True)
             #wait(500, MSEC)
             dt.drive_to_xy(300.0, 2750 - 400.0, False, speed, heading = 0)
+
+            speed += 25
+            if speed > 100:
+                speed = 25
 
 
     while True:
