@@ -28,6 +28,13 @@ from v5pythonlibrary import * # Loaded from SDCard
 from robotconfiguration import RobotConfiguration
 from math import radians, degrees, cos, asin, sin, sqrt, pi
 
+DRIVE_MOTION_MODEL = False
+try:
+    from motionmodel import DriveMotionModel
+    DRIVE_MOTION_MODEL = True
+except ImportError:
+    print("Failed to import DriveMotionModel")
+
 # ------------------------------------------------------------ #
 ### SETUP DEFAULT ALLIANCE AND AUTONOMOUS SEQUENCE HERE
 # ------------------------------------------------------------ #
@@ -434,7 +441,7 @@ THETA = 0
 
 class XDriveTrain():
 
-    FOWARD_EFFICIENCY = 1 / 1.045
+    FORWARD_EFFICIENCY = 1 / 1.045
     LEFT_POWER_SCALING = 1.0
     RIGHT_POWER_SCALING = 0.85
     FRONT_POWER_SCALING = 1.0
@@ -543,7 +550,7 @@ class XDriveTrain():
         turn_speed = 100 # max turn speed in percent
         wheel_efficiency = 1 / cos(radians(DRIVETRAIN_WHEEL_ANGLES))
         effective_wheel_size = 220 * wheel_efficiency * DRIVETRAIN_EXTERNAL_GEAR_RATIO
-        forward_target_revs = (distance / effective_wheel_size) / self.FOWARD_EFFICIENCY if not strafe else 0
+        forward_target_revs = (distance / effective_wheel_size) / self.FORWARD_EFFICIENCY if not strafe else 0
         strafe_target_revs = distance / effective_wheel_size if strafe else 0
         if not QUIET_MODE:
             print("Target revolutions: {:.2f} {:.2f}".format(forward_target_revs, strafe_target_revs))
@@ -683,64 +690,79 @@ class XDriveTrain():
         turn_speed = 100 # max turn speed in percent
         lateral_speed = 100 # max lateral speed in percent (this is the perpenicular speed to the commanded direction)
         target_tolerance = 10 # mm
-        ramp_rate = 1 # percent of increase per loop iteration (10ms loop)
+        ramp_rate = 1 # percent of increase per loop iteration (10ms loop) for acceleration
+        # PID constants
         major_kp = 50.0  # Proportional gain for the major (along track) direction control # 50 / 256
         major_kd = 256.0 # Derivative gain for major (along track) direction control
         minor_kp = 25.0  # Proportional gain for the minor (cross track) direction control
         minor_kd = 0.0 # Derivative gain for minor (cross tracks) direction control
         turn_kp = 550.0  # Proportional gain for turn control
-        derivative_alpha = 0.2
-        previous_fwd_error_revs = None
-        previous_strafe_error_revs = None
-        filtered_fwd_derivative = 0.0
-        filtered_strafe_derivative = 0.0
+        # derivative (D) filtering
+        drive_derivative_alpha = 0.2        
+        previous_major_error_revs = None
+        previous_minor_error_revs = None
+        filtered_major_derivative = 0.0
+        filtered_minor_derivative = 0.0
+
+        # Define a fixed path frame from the starting position to the target.
+        path_x = target_x - X
+        path_y = target_y - Y
+        path_length = sqrt(path_x * path_x + path_y * path_y)
+        if path_length <= target_tolerance:
+            self.stop_all(BRAKE)
+            if not QUIET_MODE:
+                    print("drive_to_xy: x={}, y={}, heading={}, time={}, timeout={}, settle={}".format(X, Y, THETA, 0, False, False))
+            return False, True
+        # normalize the path vector to unit length
+        path_x /= path_length
+        path_y /= path_length
+        normal_x = -path_y
+        normal_y = path_x
 
         # save starting rotation
         target_rotation = heading if heading is not None else inertial.rotation()
 
+        # loop control variables
         done = False
         timeout_count = 0
         settle_count = 0
         loop_count = 0
         is_timeout = False
         is_settle = False
-        last_fwd = 0
-        last_strafe = 0
-        fwd_ramp_enabled = True
-        strafe_ramp_enabled = True
+        last_major = 0
+        last_minor = 0
+        major_ramp_enabled = True
+        minor_ramp_enabled = True
 
         while not done:
             current_rotation = inertial.rotation()
             rotation_error = (target_rotation - current_rotation) / 360.0 # saturate at 360 degrees
 
-            # errors need to be rotated based on heading
+            # compute target errors in the global frame
+            target_error_x = target_x - X
+            target_error_y = target_y - Y
+            major_error = target_error_x * path_x + target_error_y * path_y
+            minor_error = target_error_x * normal_x + target_error_y * normal_y
 
-            # rotate errors based on current heading
-            rotated_x_error = cos(radians(current_rotation)) * (target_x - X) + sin(radians(current_rotation)) * (target_y - Y)
-            rotated_y_error = -sin(radians(current_rotation)) * (target_x - X) + cos(radians(current_rotation)) * (target_y - Y)
-
-            average_fwd_error = rotated_x_error
-            average_strafe_error = rotated_y_error
-
-            # print("{:0.2f} {:0.2f} {:0.2f} {:0.2f}".format(left_error, right_error, front_error, back_error))
-
-            average_error = average_fwd_error if not strafe else average_strafe_error
-            if abs(average_error) < target_tolerance:
+            # Only check for settle in the major direction
+            if abs(major_error) < target_tolerance:
                 settle_count += 1
             else:
                 settle_count = 0
 
-            # convert to approximate motor revolutions based on errors
-            forward_error_revs = (average_fwd_error / effective_wheel_size) # if not strafe else 0
-            strafe_error_revs = (average_strafe_error / effective_wheel_size) # if strafe else 0
-            if previous_fwd_error_revs is None: previous_fwd_error_revs = forward_error_revs
-            if previous_strafe_error_revs is None: previous_strafe_error_revs = strafe_error_revs
+            # convert major and minor errors to wheel revolutions
+            major_error_revs = major_error / effective_wheel_size
+            minor_error_revs = minor_error / effective_wheel_size
+            if previous_major_error_revs is None: previous_major_error_revs = major_error_revs
+            if previous_minor_error_revs is None: previous_minor_error_revs = minor_error_revs
 
-            raw_fwd_derivative = forward_error_revs - previous_fwd_error_revs
-            raw_strafe_derivative = strafe_error_revs - previous_strafe_error_revs
-            filtered_fwd_derivative += derivative_alpha * (raw_fwd_derivative - filtered_fwd_derivative)
-            filtered_strafe_derivative += derivative_alpha * (raw_strafe_derivative - filtered_strafe_derivative)
+            # compute raw and filtered derivatives for major and minor errors
+            raw_major_derivative = major_error_revs - previous_major_error_revs
+            raw_minor_derivative = minor_error_revs - previous_minor_error_revs
+            filtered_major_derivative += drive_derivative_alpha * (raw_major_derivative - filtered_major_derivative)
+            filtered_minor_derivative += drive_derivative_alpha * (raw_minor_derivative - filtered_minor_derivative)
 
+            # check for timeout and settle conditions
             if (timeout_count > timeout): is_timeout = True
             if (settle_count > 10): is_settle = True
 
@@ -751,43 +773,34 @@ class XDriveTrain():
                 self.rfm.stop(BRAKE)
                 self.rbm.stop(BRAKE)
             else:
-                if not strafe:
-                    drive_kp = major_kp
-                    drive_kd = major_kd
-                    drive_speed = speed
-                else:
-                    drive_kp = minor_kp
-                    drive_kd = minor_kd
-                    drive_speed = lateral_speed
-                fwd_control = drive_kp * forward_error_revs + drive_kd * filtered_fwd_derivative
-                fwd_control = self.limit(fwd_control, drive_speed)
-                if abs(fwd_control) < abs(last_fwd): fwd_ramp_enabled = False
-                if fwd_ramp_enabled: fwd_control = self.ramp_limit(fwd_control, last_fwd, ramp_rate)
-                last_fwd = fwd_control
-                fwd_control_percent = fwd_control
+                # PID loops for major and minor errors
+                major_control = major_kp * major_error_revs + major_kd * filtered_major_derivative
+                major_control = self.limit(major_control, speed)
+                if abs(major_control) < abs(last_major): major_ramp_enabled = False
+                if major_ramp_enabled: major_control = self.ramp_limit(major_control, last_major, ramp_rate)
+                last_major = major_control
 
+                minor_control = minor_kp * minor_error_revs + minor_kd * filtered_minor_derivative
+                minor_control = self.limit(minor_control, lateral_speed)
+                if abs(minor_control) < abs(last_minor): minor_ramp_enabled = False
+                if minor_ramp_enabled: minor_control = self.ramp_limit(minor_control, last_minor, ramp_rate)
+                last_minor = minor_control
 
-                if strafe:
-                    strafe_kp = major_kp
-                    strafe_kd = major_kd
-                    strafe_speed = speed
-                else:
-                    strafe_kp = minor_kp
-                    strafe_kd = minor_kd
-                    strafe_speed = lateral_speed
-                strafe_control = strafe_kp * strafe_error_revs + strafe_kd * filtered_strafe_derivative
-                strafe_control = self.limit(strafe_control, strafe_speed)
-                if abs(strafe_control) < abs(last_strafe): strafe_ramp_enabled = False
-                if strafe_ramp_enabled: strafe_control = self.ramp_limit(strafe_control, last_strafe, ramp_rate)
-                last_strafe = strafe_control
-                strafe_control_percent = strafe_control
+                previous_major_error_revs = major_error_revs
+                previous_minor_error_revs = minor_error_revs
 
-                previous_fwd_error_revs = forward_error_revs
-                previous_strafe_error_revs = strafe_error_revs
+                # rotate control from global to robot-centric frame
+                global_x_control = major_control * path_x + minor_control * normal_x
+                global_y_control = major_control * path_y + minor_control * normal_y
+                current_rotation_radians = radians(current_rotation)
+                fwd_control_percent = cos(current_rotation_radians) * global_x_control + sin(current_rotation_radians) * global_y_control
+                strafe_control_percent = -sin(current_rotation_radians) * global_x_control + cos(current_rotation_radians) * global_y_control
 
+                # PID loop for rotation error
                 turn_control = turn_kp * rotation_error
                 turn_control_percent = self.limit(turn_control, turn_speed)
 
+                # control mixing and drive motors
                 left_power = 1.0 # LEFT_POWER_SCALING
                 right_power = 1.0 # RIGHT_POWER_SCALING
                 front_power = 1.0 # FRONT_POWER_SCALING
@@ -900,7 +913,7 @@ def motor_distance_step(current, previous):
     rb = current[3] - previous[3]
     forward = (lf + lb + rf + rb) / 4
     side = (lf - rf - lb + rb) / 4
-    forward = forward * DRIVETRAIN_EXTERNAL_GEAR_RATIO * DRIVETRAIN_WHEEL_SIZE * sqrt(2) * dt.FOWARD_EFFICIENCY
+    forward = forward * DRIVETRAIN_EXTERNAL_GEAR_RATIO * DRIVETRAIN_WHEEL_SIZE * sqrt(2) * dt.FORWARD_EFFICIENCY
     side = side * DRIVETRAIN_EXTERNAL_GEAR_RATIO * DRIVETRAIN_WHEEL_SIZE * sqrt(2)
     return forward, side
 
@@ -1417,7 +1430,7 @@ def autonomous_calibration():
     # wait(100, MSEC)
     # return
 
-    speed = 25
+    speed = 33
     turn_speed = 75
     first_run = True
 
@@ -1450,7 +1463,7 @@ def autonomous_calibration():
             dt.drive_to_xy(300.0 + 100, 2750 - 400.0, False, speed, heading = 0)
             #wait(500, MSEC)
             if first_run:
-                # Thread(log_odom)
+                Thread(log_odom)
                 wait(100, MSEC)
                 first_run = False
             if use_distance: odom_distance_enable(False, False, False)
@@ -1467,9 +1480,9 @@ def autonomous_calibration():
             #wait(500, MSEC)
             dt.drive_to_xy(300.0, 2750 - 400.0, False, speed, heading = 0)
 
-            speed += 25
+            speed += 33
             if speed > 100:
-                speed = 25
+                speed = 33
 
 
     while True:
@@ -1913,229 +1926,6 @@ AUTO_TURN_KP = 1.5 # 2.0 # starting 0.25
 AUTO_TURN_KD = 2.5 # 10.0
 NO_INPUT_TIMEOUT = 250
 
-# ------------------------------------------------------------ #
-### DRIVER CONTROL MOTION MODEL
-# ------------------------------------------------------------ #
-
-MOTOR_FREE_SPEED_RPM = 600.0 # 6:1 cartridge
-# Distance the wheel surface travels per motor revolution
-MM_PER_MOTOR_REV_SURFACE = DRIVETRAIN_EXTERNAL_GEAR_RATIO * DRIVETRAIN_WHEEL_SIZE
-# 45 degree rollers mean the chassis travels sqrt(2) times that (matches motor_distance_step)
-MM_PER_MOTOR_REV_CHASSIS = MM_PER_MOTOR_REV_SURFACE * sqrt(2) * dt.FOWARD_EFFICIENCY
-DRIVE_RADIUS = 13.6 * 25.4 / 2.0 # mm, centre of robot to wheel contact patch
-MAX_ROBOT_SPEED = MOTOR_FREE_SPEED_RPM / 60.0 * MM_PER_MOTOR_REV_CHASSIS # mm/s
-MAX_ROBOT_TURN_RATE = degrees(MOTOR_FREE_SPEED_RPM / 60.0 * MM_PER_MOTOR_REV_SURFACE / DRIVE_RADIUS) # deg/s
-
-class DriveMotionModel:
-    '''
-    ### Closed loop chassis model for driver control
-
-    Turns the driver's stick command into a desired chassis velocity (mm/s forward, mm/s strafe,
-    deg/s rotation), measures what the robot is actually doing, and trims the command so the two
-    agree.
-
-    ### Measurement sources
-        rotation_fwd, rotation_side: true ground speed - the wheels are unpowered so they cannot slip \\
-        inertial: true rotation rate \\
-        drive encoders: what the wheels think they are doing, and how far each one is falling \\
-        behind its command
-
-    The difference between the encoder view and the tracking wheel view is wheel slip.
-
-    ### Corrections
-        1. Per axis PI trim, so a command that is being resisted (carpet drag, a raised lift, \\
-           contact with another robot) still produces the motion the driver asked for.
-        2. A single authority scale applied to all three axes when a wheel cannot keep up with \\
-           its command or the wheels are slipping. Scaling the whole command keeps the ratio \\
-           between the four wheels intact, so the robot carries on along the commanded vector \\
-           instead of veering towards whichever corner still has grip.
-    '''
-
-    # Trim gains, in output percent per percent of full scale velocity error
-    KP_TRANSLATE = 0.50
-    KI_TRANSLATE = 5.0 # per second
-    KP_ROTATE = 0.40
-    KI_ROTATE = 4.0 # per second
-
-    # Authority limits on the trim so the model can never take the robot away from the driver
-    MAX_TRANSLATE_TRIM = 25.0
-    MAX_ROTATE_TRIM = 20.0
-    MAX_INTEGRAL_TRIM = 12.0
-
-    # An axis below this stick command is left alone, otherwise the loop fights the coast down
-    COMMAND_THRESHOLD = 5.0
-
-    # A wheel this far behind its commanded speed is out of torque rather than out of grip
-    WHEEL_FOLLOW_ERROR = 12.0 # percent
-    # Encoders reporting this much more motion than the ground truth sensors means slip
-    SLIP_THRESHOLD = 12.0 # percent of full scale
-    BACKOFF_GAIN = 0.4 # authority lost per loop per percent of overrun
-    RECOVERY_RATE = 1.5 # authority regained per loop
-    MIN_AUTHORITY = 50.0
-
-    RATE_FILTER = 0.3 # low pass on the differentiated sensor rates
-
-    def __init__(self):
-        self.follow_error = 0.0
-        self.saturated = False
-        self.slipping = False
-        self.authority = 100.0
-        self.measured_forward = 0.0
-        self.measured_strafe = 0.0
-        self.measured_turn = 0.0
-        self.wheel_forward = 0.0
-        self.wheel_strafe = 0.0
-        self.wheel_turn = 0.0
-        self.i_forward = 0.0
-        self.i_strafe = 0.0
-        self.i_turn = 0.0
-        self.reset()
-
-    def reset(self):
-        '''
-        ### Clears the loop state and re-baselines the sensors
-
-        Call whenever the drivetrain is released so stale error does not reappear on the next command.
-        '''
-        self.i_forward = 0.0
-        self.i_strafe = 0.0
-        self.i_turn = 0.0
-        self.authority = 100.0
-        self.follow_error = 0.0
-        self.saturated = False
-        self.slipping = False
-        self.measured_forward = 0.0
-        self.measured_strafe = 0.0
-        self.measured_turn = 0.0
-        self.wheel_forward = 0.0
-        self.wheel_strafe = 0.0
-        self.wheel_turn = 0.0
-        self._last_time = brain.timer.time(MSEC)
-        self._last_fwd = rotation_fwd.position(TURNS)
-        self._last_side = rotation_side.position(TURNS)
-        self._last_theta = inertial.rotation(DEGREES)
-
-    def _measure(self, dt):
-        lf = left_front_motor.velocity(RPM)
-        lb = left_back_motor.velocity(RPM)
-        rf = right_front_motor.velocity(RPM)
-        rb = right_back_motor.velocity(RPM)
-
-        # Same mixing as the motor commands, expressed as a rate
-        self.wheel_forward = (lf + lb + rf + rb) / 4.0 / 60.0 * MM_PER_MOTOR_REV_CHASSIS
-        self.wheel_strafe = (lf - lb - rf + rb) / 4.0 / 60.0 * MM_PER_MOTOR_REV_CHASSIS
-        self.wheel_turn = degrees((lf + lb - rf - rb) / 4.0 / 60.0 * MM_PER_MOTOR_REV_SURFACE / DRIVE_RADIUS)
-
-        theta = inertial.rotation(DEGREES)
-        turn_rate = (theta - self._last_theta) / dt
-        self._last_theta = theta
-        self.measured_turn += (turn_rate - self.measured_turn) * self.RATE_FILTER
-
-        fwd = rotation_fwd.position(TURNS)
-        fwd_rate = (fwd - self._last_fwd) * ROTATION_FWD_WHEEL_SIZE / dt
-        self._last_fwd = fwd
-        # the tracking wheel sits right of centre, so rotation shows up there as forward travel
-        fwd_rate += ROTATION_FWD_WHEEL_OFFSET * radians(self.measured_turn)
-        self.measured_forward += (fwd_rate - self.measured_forward) * self.RATE_FILTER
-
-        side = rotation_side.position(TURNS)
-        side_rate = (side - self._last_side) * ROTATION_SIDE_WHEEL_SIZE / dt
-        self._last_side = side
-        # the tracking wheel sits ahead of centre, so rotation shows up there as lateral travel
-        side_rate -= ROTATION_SIDE_WHEEL_OFFSET * radians(self.measured_turn)
-        self.measured_strafe += (side_rate - self.measured_strafe) * self.RATE_FILTER
-
-    def _axis_trim(self, command, error, integral, kp, ki, max_trim, dt, allow_integral):
-        if abs(command) < self.COMMAND_THRESHOLD:
-            return 0.0, 0.0
-        if allow_integral:
-            integral = dt.limit(integral + error * ki * dt, self.MAX_INTEGRAL_TRIM)
-        return dt.limit(error * kp + integral, max_trim), integral
-
-    def _update_authority(self):
-        slip = max(abs(self.wheel_forward - self.measured_forward) / MAX_ROBOT_SPEED,
-                   abs(self.wheel_strafe - self.measured_strafe) / MAX_ROBOT_SPEED,
-                   abs(self.wheel_turn - self.measured_turn) / MAX_ROBOT_TURN_RATE) * 100.0
-        self.slipping = slip > self.SLIP_THRESHOLD
-
-        overrun = max(self.follow_error - self.WHEEL_FOLLOW_ERROR, slip - self.SLIP_THRESHOLD)
-        if overrun > 0.0:
-            self.authority -= overrun * self.BACKOFF_GAIN
-        else:
-            self.authority += self.RECOVERY_RATE
-
-        if self.authority > 100.0: self.authority = 100.0
-        elif self.authority < self.MIN_AUTHORITY: self.authority = self.MIN_AUTHORITY
-
-    def update(self, forward, strafe, turn):
-        '''
-        ### Adjusts a stick command so the robot moves the way it was asked to
-
-        ### Arguments
-            forward: commanded forward speed in percent \\
-            strafe: commanded strafe speed in percent \\
-            turn: commanded turn rate in percent
-
-        ### Returns
-            Corrected forward, strafe and turn in percent
-        '''
-        if not robot_config.enable_motion_model:
-            return forward, strafe, turn
-
-        now = brain.timer.time(MSEC)
-        dt = (now - self._last_time) / 1000.0
-        self._last_time = now
-        # first pass after a reset, or the loop stalled, so there is no usable rate this time round
-        if dt <= 0.0 or dt > 0.25:
-            return forward, strafe, turn
-
-        self._measure(dt)
-        self._update_authority()
-
-        # the command is already being held back, so stop the integrators winding up against it
-        allow_integral = self.authority >= 100.0
-
-        forward_error = forward - self.measured_forward / MAX_ROBOT_SPEED * 100.0
-        strafe_error = strafe - self.measured_strafe / MAX_ROBOT_SPEED * 100.0
-        turn_error = turn - self.measured_turn / MAX_ROBOT_TURN_RATE * 100.0
-
-        forward_trim, self.i_forward = self._axis_trim(forward, forward_error, self.i_forward,
-                                                      self.KP_TRANSLATE, self.KI_TRANSLATE,
-                                                      self.MAX_TRANSLATE_TRIM, dt, allow_integral)
-        strafe_trim, self.i_strafe = self._axis_trim(strafe, strafe_error, self.i_strafe,
-                                                    self.KP_TRANSLATE, self.KI_TRANSLATE,
-                                                    self.MAX_TRANSLATE_TRIM, dt, allow_integral)
-        turn_trim, self.i_turn = self._axis_trim(turn, turn_error, self.i_turn,
-                                                 self.KP_ROTATE, self.KI_ROTATE,
-                                                 self.MAX_ROTATE_TRIM, dt, allow_integral)
-
-        scale = self.authority / 100.0
-        return ((forward + forward_trim) * scale,
-                (strafe + strafe_trim) * scale,
-                (turn + turn_trim) * scale)
-
-    def observe_wheels(self, left_front, left_back, right_front, right_back):
-        '''
-        ### Records how far the worst wheel is falling behind the speed it was last commanded
-
-        Call with the final mixed wheel speeds each loop. A wheel that is being carried along by
-        the other three is not overloaded, so only a shortfall in the commanded direction counts.
-        '''
-        if not robot_config.enable_motion_model:
-            return
-
-        worst = 0.0
-        for command, motor in ((left_front, left_front_motor), (left_back, left_back_motor),
-                               (right_front, right_front_motor), (right_back, right_back_motor)):
-            if abs(command) < self.COMMAND_THRESHOLD:
-                continue
-            actual = motor.velocity(PERCENT)
-            shortfall = command - actual if command > 0 else actual - command
-            if shortfall > worst: worst = shortfall
-
-        self.follow_error = worst
-        self.saturated = worst > self.WHEEL_FOLLOW_ERROR
-
 def user_control():
     global ROBOT_ENABLED
 
@@ -2175,7 +1965,10 @@ def user_control():
     last_strafe = 0
     last_turn_error = 0
 
-    motion_model = DriveMotionModel()
+    if DRIVE_MOTION_MODEL:
+        motion_model = DriveMotionModel(brain, rotation_fwd, rotation_side, inertial, left_front_motor, left_back_motor, right_front_motor, right_back_motor)
+    else:
+        motion_model = None
 
     left_front_motor.set_stopping(COAST)
     left_back_motor.set_stopping(COAST)
@@ -2275,7 +2068,8 @@ def user_control():
             right_front_motor.stop(COAST)
             right_back_motor.stop(COAST)
             rotation_set = inertial.rotation(DEGREES)
-            motion_model.reset()
+            if motion_model is not None:
+                motion_model.reset()
             all_stop = True
         else:
             all_stop = False
@@ -2298,7 +2092,10 @@ def user_control():
             auto_turn = 0
             last_turn_error = 0
 
-        combined_forward, combined_strafe, combined_turn = motion_model.update(forward, strafe, turn + auto_turn)
+        if motion_model is not None:
+            combined_forward, combined_strafe, combined_turn = motion_model.update(forward, strafe, turn + auto_turn)
+        else:
+            combined_forward, combined_strafe, combined_turn = forward, strafe, turn + auto_turn
         
         if not all_stop:
             left_power = 1.0 # LEFT_POWER_SCALING
@@ -2331,7 +2128,8 @@ def user_control():
             right_front_motor.spin(FORWARD)
             right_back_motor.spin(FORWARD)
 
-            motion_model.observe_wheels(left_front_speed, left_back_speed, right_front_speed, right_back_speed)
+            if motion_model is not None:
+                motion_model.observe_wheels(left_front_speed, left_back_speed, right_front_speed, right_back_speed)
 
         wait(10, MSEC)
 
