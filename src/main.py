@@ -39,13 +39,13 @@ except ImportError:
 ### SETUP DEFAULT ALLIANCE AND AUTONOMOUS SEQUENCE HERE
 # ------------------------------------------------------------ #
 
-CALIBRATION = True
+CALIBRATION = False
 
-ALLIANCE_COLOR = AllianceColor.RED
-# ALLIANCE_COLOR = AllianceColor.BLUE
+# ALLIANCE_COLOR = AllianceColor.RED
+ALLIANCE_COLOR = AllianceColor.BLUE
 
-AUTON_SEQUENCE = AutonSequence.SKILLS
-# AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
+# AUTON_SEQUENCE = AutonSequence.SKILLS
+AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
 # AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
 # AUTON_SEQUENCE = AutonSequence.MATCH_NONE
 
@@ -1531,7 +1531,7 @@ def autonomous_none():
     dt.drive_for(100, False, 50)
 
 def claw_move1():
-    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID1)
+    # run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID1)
     command_lift(5)
 
 def claw_move2():
@@ -1557,14 +1557,11 @@ def autonomous_left():
     dt.drive_to_xy(300, 2400, True, 66, heading = 0)
     odom_print()
 
-    dt.drive_for(100, False, 50, heading = 0)
+    dt.drive_for(175, False, 50, heading = 0)
     command_lift(3)
     open_claw()
-    wall_distance = average_back_distance()[0] - (BACK_DISTANCE1_FROM_BACK + BACK_DISTANCE2_FROM_BACK) / 2
-    print("Wall distance: {}".format(wall_distance))
-    target_distance = 120
-    reverse_by = target_distance - wall_distance
-    dt.drive_for(reverse_by, False, 50, heading = 0)
+
+    dt.drive_to_xy(300, 2400, True, 66, heading = 0)
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
     command_lift(0)
     current_heading = inertial.rotation()
@@ -1573,6 +1570,7 @@ def autonomous_left():
     dt.turn_for(target_heading - current_heading, 100)
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID3)
     wait(250, MSEC)
+    
     close_claw()
     command_lift(5)
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
@@ -1581,13 +1579,15 @@ def autonomous_left():
     target_heading = 0
     dt.turn_for(target_heading - current_heading, 100)
     command_lift(11)
-    dt.drive_for(-reverse_by+20, False, 50, heading = 0)
-    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID1)
+    dt.drive_for(175, False, 50, heading = 0)
+    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
     wait(250, MSEC)
+
     command_lift(9)
     open_claw()
     wait(250, MSEC)
-    dt.drive_for(reverse_by, False, 50, heading = 0)
+
+    dt.drive_to_xy(300, 2400, True, 66, heading = 0)
     Thread(claw_move2)
     dt.drive_to_xy(300, 1200, False, 100, heading = 0)
 
