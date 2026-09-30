@@ -44,8 +44,8 @@ CALIBRATION = False
 ALLIANCE_COLOR = AllianceColor.RED
 # ALLIANCE_COLOR = AllianceColor.BLUE
 
-# AUTON_SEQUENCE = AutonSequence.SKILLS
-AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
+AUTON_SEQUENCE = AutonSequence.SKILLS
+# AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
 # AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
 # AUTON_SEQUENCE = AutonSequence.MATCH_NONE
 
@@ -1546,7 +1546,7 @@ def autonomous_calibration():
     # print("Odometer distance: {}".format(motor_total_distance()))
     # print("Rotation: {}".format(inertial.rotation()))
 
-def autonomous_skills():
+def autonomous_skills_old():
     # Thread(odom_thread)
     # place automonous code here
     while not CLAW_INITIALIZED:
@@ -1565,6 +1565,27 @@ def autonomous_skills():
     open_claw()
     dt.drive_for(-150, False, 50, heading = 0)
     # TODO: Move back to safe distance
+
+def autonomous_skills_cup_from_floor():
+    open_claw()
+    dt.drive_to_xy(900.0, 1800.0, False, 100, heading = 0)
+    dt.drive_to_xy(900.0, 2400.0-25, True, 66, heading = 0)
+    wait(500, MSEC)
+    dt.drive_to_xy(900.0, 2400.0-25.0, True, 66, heading = 0)
+    distance = claw_distance.object_distance(MM)
+    dt.drive_for(distance - 40, False, 33, heading = 0)
+    close_claw()
+
+def autonomous_skills():
+    open_claw()
+    dt.drive_to_xy(300.0, 1800.0, False, 100, heading = 0)
+    dt.turn_for(180, 75)
+    dt.drive_to_xy(300.0, 3600-300, True, 66, heading = 180)
+    distance = claw_distance.object_distance(MM)
+    print("Claw_distance: {}".format(distance))
+    dt.drive_for(distance - 70, False, 33, heading = 180)
+    close_claw()
+    dt.drive_for(50, False, 25, heading = 180)
 
 def autonomous_none():
     # place automonous code here
