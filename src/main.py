@@ -41,8 +41,8 @@ except ImportError:
 
 CALIBRATION = False
 
-# ALLIANCE_COLOR = AllianceColor.RED
-ALLIANCE_COLOR = AllianceColor.BLUE
+ALLIANCE_COLOR = AllianceColor.RED
+# ALLIANCE_COLOR = AllianceColor.BLUE
 
 # AUTON_SEQUENCE = AutonSequence.SKILLS
 AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
@@ -691,12 +691,14 @@ class XDriveTrain():
         lateral_speed = 100 # max lateral speed in percent (this is the perpenicular speed to the commanded direction)
         target_tolerance = 10 # mm
         ramp_rate = 1 # percent of increase per loop iteration (10ms loop) for acceleration
+
         # PID constants
         major_kp = 50.0  # Proportional gain for the major (along track) direction control # 50 / 256
         major_kd = 256.0 # Derivative gain for major (along track) direction control
         minor_kp = 25.0  # Proportional gain for the minor (cross track) direction control
         minor_kd = 0.0 # Derivative gain for minor (cross tracks) direction control
         turn_kp = 550.0  # Proportional gain for turn control
+
         # derivative (D) filtering
         drive_derivative_alpha = 0.2        
         previous_major_error_revs = None
@@ -713,6 +715,7 @@ class XDriveTrain():
             if not QUIET_MODE:
                     print("drive_to_xy: x={}, y={}, heading={}, time={}, timeout={}, settle={}".format(X, Y, THETA, 0, False, False))
             return False, True
+        
         # normalize the path vector to unit length
         path_x /= path_length
         path_y /= path_length
@@ -1033,7 +1036,10 @@ def initialize_distances():
     previous_right_distance[0] = right_distance.object_distance(MM)
     previous_right_distance[1] = right_distance.timestamp()
 
-def filter_distance(heading, tolerance):
+def filter_distance_by_angle(rotation, tolerance):
+    # Returns True if angle is valid
+    heading = rotation % 360
+
     if heading < 0 or heading >= 360:
         raise ValueError("filter_distance(): Heading must be in the range [0, 360).")
     
@@ -1046,11 +1052,61 @@ def filter_distance(heading, tolerance):
     elif heading > 270 - tolerance and heading < 270 + tolerance:
         return True
     return False
+
+EFORWARD = 0
+ERIGHT = 1
+EBACK = 2
+ELEFT = 3
+
+NORTH = 0
+EAST = 1
+SOUTH = 2
+WEST = 3
+
+def compass_heading(rotation):
+    heading = rotation % 360
+
+    if heading >= 315 or heading < 45:
+        return NORTH
+    elif heading >= 45 and heading < 135:
+        return EAST
+    elif heading >= 135 and heading < 225:
+        return SOUTH
+    else:
+        return WEST
+
+def filter_distance_by_location(direction, x, y, rotation):
+    compass = compass_heading(rotation)
+    if direction == EFORWARD:
+        if compass == NORTH: return x > 1800
+        elif compass == EAST: return y > 1800
+        elif compass == SOUTH: return x < 1800
+        elif compass == WEST: return y < 1800
+    elif direction == ERIGHT:
+        if compass == NORTH: return y > 1600
+        elif compass == EAST: return x < 1800
+        elif compass == SOUTH: return y < 2000
+        elif compass == WEST: return x > 1800
+    elif direction == EBACK:
+        if compass == NORTH: return x < 1800
+        elif compass == EAST: return y < 1800
+        elif compass == SOUTH: return x > 1800
+        elif compass == WEST: return y > 1800
+    elif direction == ELEFT:
+        if compass == NORTH: return y < 1600
+        elif compass == EAST: return x > 1800
+        elif compass == SOUTH: return y > 2000
+        elif compass == WEST: return x < 1800
+
+    return False
     
-def get_back_distance(heading):
+def get_back_distance(rotation):
     global previous_back_distance
 
-    if not filter_distance(heading, 5):
+    if not filter_distance_by_angle(rotation, 5):
+        return None
+
+    if not filter_distance_by_location(EBACK, X, Y, rotation):
         return None
 
     new_back1_timestamp = back_distance1.timestamp()
@@ -1079,10 +1135,13 @@ def logistic_error(d, error, midpoint = 175, steepness = 0.05):
     # Uses math.exp instead of np.exp
     return error / (1 + math.exp(steepness * (d - midpoint)))
 
-def get_left_distance(heading):
+def get_left_distance(rotation):
     global previous_left_distance
 
-    if not filter_distance(heading, 5):
+    if not filter_distance_by_angle(rotation, 5):
+        return None
+
+    if not filter_distance_by_location(ELEFT, X, Y, rotation):
         return None
 
     loader_offset = 0
@@ -1113,10 +1172,13 @@ def get_left_distance(heading):
 
     return None
 
-def get_right_distance(heading):
+def get_right_distance(rotation):
     global previous_right_distance
 
-    if not filter_distance(heading, 5):
+    if not filter_distance_by_angle(rotation, 5):
+        return None
+
+    if not filter_distance_by_location(ERIGHT, X, Y, rotation):
         return None
 
     loader_offset = 0
@@ -1193,23 +1255,6 @@ def predict_wheels():
 
     return new_X, new_Y, new_theta
 
-NORTH = 0
-EAST = 1
-SOUTH = 2
-WEST = 3
-
-def compass_heading(heading):
-    heading = heading % 360
-
-    if heading >= 315 or heading < 45:
-        return NORTH
-    elif heading >= 45 and heading < 135:
-        return EAST
-    elif heading >= 135 and heading < 225:
-        return SOUTH
-    else:
-        return WEST
-
 ENABLE_BACK_DISTANCE = True
 ENABLE_LEFT_DISTANCE = not CALIBRATION
 ENABLE_RIGHT_DISTANCE = True
@@ -1240,46 +1285,46 @@ def odom_thread():
         filter.predict(X - filter.X, Y - filter.Y)
 
         # the walls can only be guaranteed unobstructed during autonomous
-        heading = compass_heading(THETA)
+        compass = compass_heading(THETA)
 
         if ENABLE_BACK_DISTANCE:
-            meas_back_distance = get_back_distance(heading)
+            meas_back_distance = get_back_distance(THETA)
             if meas_back_distance is not None:
                 meas_back_distance -= (BACK_DISTANCE1_FROM_BACK + BACK_DISTANCE2_FROM_BACK) / 2 # subtract distance to back of robot
                 meas_back_distance += HIDDEN_PERIMITER + ROBOT_LENGTH / 2 # add the hidden perimeter and half the robot length
-                if heading == NORTH:
+                if compass == NORTH:
                     X, Y = filter.update_x(meas_back_distance)
-                elif heading == SOUTH:
+                elif compass == SOUTH:
                     X, Y = filter.update_x(3600.0 - meas_back_distance)
-                elif heading == WEST:
+                elif compass == WEST:
                     X, Y = filter.update_y(3600.0 - meas_back_distance)
-                elif heading == EAST:
+                elif compass == EAST:
                     X, Y = filter.update_y(meas_back_distance)
 
         if ENABLE_RIGHT_DISTANCE:
-            meas_right_distance = get_right_distance(heading)
+            meas_right_distance = get_right_distance(THETA)
             if meas_right_distance is not None:
                 meas_right_distance += HIDDEN_PERIMITER + ROBOT_WIDTH / 2 - RIGHT_DISTANCE_FROM_RIGHT
-                if heading == NORTH:
+                if compass == NORTH:
                     X, Y = filter.update_y(3600.0 - meas_right_distance)
-                elif heading == SOUTH:
+                elif compass == SOUTH:
                     X, Y = filter.update_y(meas_right_distance)
-                elif heading == WEST:
+                elif compass == WEST:
                     X, Y = filter.update_x(3600.0 - meas_right_distance)
-                elif heading == EAST:
+                elif compass == EAST:
                     X, Y = filter.update_x(meas_right_distance)
 
         if ENABLE_LEFT_DISTANCE:
-            meas_left_distance = get_left_distance(heading)
+            meas_left_distance = get_left_distance(THETA)
             if meas_left_distance is not None:
                 meas_left_distance += HIDDEN_PERIMITER + ROBOT_WIDTH / 2 - LEFT_DISTANCE_FROM_LEFT
-                if heading == NORTH:
+                if compass == NORTH:
                     X, Y = filter.update_y(meas_left_distance)
-                elif heading == SOUTH:
+                elif compass == SOUTH:
                     X, Y = filter.update_y(3600.0 - meas_left_distance)
-                elif heading == WEST:
+                elif compass == WEST:
                     X, Y = filter.update_x(meas_left_distance)
-                elif heading == EAST:
+                elif compass == EAST:
                     X, Y = filter.update_x(3600.0 - meas_left_distance)
 
         Pxx, Pyy = filter.Pxx, filter.Pyy
@@ -1561,6 +1606,7 @@ def autonomous_left():
     command_lift(3)
     open_claw()
 
+    dt.drive_to_xy(300, 2400, False, 66, heading = 0)
     dt.drive_to_xy(300, 2400, True, 66, heading = 0)
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
     command_lift(0)
@@ -1587,9 +1633,9 @@ def autonomous_left():
     open_claw()
     wait(250, MSEC)
 
-    dt.drive_to_xy(300, 2400, True, 66, heading = 0)
+    dt.drive_to_xy(300, 2400, False, 66, heading = 0)
     Thread(claw_move2)
-    dt.drive_to_xy(300, 1200, False, 100, heading = 0)
+    dt.drive_to_xy(300, 1200, True, 100, heading = 0)
 
 def autonomous_right():
     # place automonous code here
@@ -1603,38 +1649,49 @@ def autonomous_right():
 
     Thread(claw_move1)
     wait(250,MSEC)
-    dt.drive_for(100, False, 50, heading = 0)
-    dt.drive_for(-700, True, 50, heading = 0)
-    dt.drive_for(100, False, 50, heading = 0)
+
+    dt.drive_to_xy(300, 1800, False, 66, heading = 0)
+    odom_print()
+    dt.drive_to_xy(300, 1200, True, 66, heading = 0)
+    odom_print()
+
+    dt.drive_for(175, False, 50, heading = 0)
     command_lift(3)
     open_claw()
-    wall_distance = average_back_distance()[0] - (BACK_DISTANCE1_FROM_BACK + BACK_DISTANCE2_FROM_BACK) / 2
-    target_distance = 120 
-    reverse_by = target_distance - wall_distance
-    dt.drive_for(reverse_by, False, 50, heading = 0)
+
+    dt.drive_to_xy(300, 1200, False, 66, heading = 0)
+    dt.drive_to_xy(300, 1200, True, 66, heading = 0)
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
     command_lift(0)
     current_heading = inertial.rotation()
+    print("Current heading: {}".format(current_heading))
     target_heading = 180
-    dt.turn_for(target_heading - current_heading, 66)
+    dt.turn_for(target_heading - current_heading, 100)
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID3)
     wait(250, MSEC)
+    
     close_claw()
     command_lift(5)
     run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
     current_heading = inertial.rotation()
+    print("Current heading: {}".format(current_heading))
     target_heading = 0
-    dt.turn_for(target_heading - current_heading, 66)
+    dt.turn_for(target_heading - current_heading, 100)
     command_lift(11)
-    dt.drive_for(-reverse_by+20, False, 50, heading = 0)
-    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID1)
+    dt.drive_for(175, False, 50, heading = 0)
+    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
     wait(250, MSEC)
+
     command_lift(9)
     open_claw()
     wait(250, MSEC)
-    dt.drive_for(reverse_by, False, 50, heading = 0)
-    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
-    command_lift(0)
+
+    dt.drive_to_xy(300, 1200, False, 66, heading = 0)
+    Thread(claw_move2)
+
+    dt.drive_to_xy(300, 600, True, 100, heading = 0)
+    dt.turn_for(-90, 100)
+
 
 def autonomous():
     global ROBOT_ENABLED
