@@ -40,7 +40,7 @@ except ImportError:
 ### SETUP DEFAULT ALLIANCE AND AUTONOMOUS SEQUENCE HERE
 # ------------------------------------------------------------ #
 
-CALIBRATION = False
+CALIBRATION = True
 
 ALLIANCE_COLOR = AllianceColor.RED
 # ALLIANCE_COLOR = AllianceColor.BLUE
@@ -97,6 +97,9 @@ left_distance = Distance(Ports.PORT6)
 RIGHT_DISTANCE_COMPENSATION = 1.0
 RIGHT_DISTANCE_FROM_RIGHT = 5 # mm
 RIGHT_DISTANCE_CLOSE_ERROR = 0 # mm (at 145mm reads 145mm)
+RIGHT_DISTANCE_CLOSE_TRANSITION = 400 # mm
+RIGHT_DISTANCE_FAR_ERROR = 18 # mm (at 1605mm reads 1623mm, at 1205mm reads 1015mm, at 407mm reads 407mm)
+RIGHT_DISTANCE_FAR_TRANSITION = 1600 # mm
 right_distance = Distance(Ports.PORT8)
 
 ROTATION_SIDE_WHEEL_SIZE = 2 * 25.4 * pi # mm circumference
@@ -158,269 +161,332 @@ def current_robot_speed(): # mm/s
 
 ### TOGGLE CONTROL
 
-def raise_toggle():
-    toggle_solenoid.set(0)
+class Toggle:
 
-def lower_toggle():
-    toggle_solenoid.set(1)
+    @staticmethod
+    def raise_toggle():
+        toggle_solenoid.set(0)
 
-def toggle_raised():
-    return toggle_solenoid.value() == 0
+    @staticmethod
+    def lower_toggle():
+        toggle_solenoid.set(1)
+
+    @staticmethod
+    def toggle_raised():
+        return toggle_solenoid.value() == 0
 
 ### LIFT CONTROL
 
-LIFT_RUNNING = False
-LIFT_HOLDING = False
-LIFT_LINKS = 31
-LIFT_TEETH = 6
-LIFT_DEGREES_PER_LINK = 360 / LIFT_TEETH
-lift_thread = None
-lift_hold_time_start = 0
+class Lift:
 
-def initialize_lift():
-    lift_motor.set_stopping(HOLD)
-    lift_motor.set_velocity(100, PERCENT)
-    lift_motor.set_timeout(3, SECONDS)
-    lift_motor.spin(REVERSE)
-    wait(1, SECONDS)
-    lift_motor.stop(HOLD)
-    wait(100, MSEC)
-    lift_motor.set_position(0, DEGREES)
-    lift_motor.stop(COAST)
+    LIFT_LINKS = 31
+    LIFT_TEETH = 6
+    LIFT_DEGREES_PER_LINK = 360 / LIFT_TEETH
 
-def lift_height(percent=False):
-    if percent:
-        return (lift_motor.position(DEGREES) / LIFT_DEGREES_PER_LINK) * (100 / LIFT_LINKS)
-    return lift_motor.position(DEGREES) / LIFT_DEGREES_PER_LINK
+    def __init__(self, motor1: Motor):
+        self.motor1 = motor1
+        self.running = False
+        self.holding = False
+        self.hold_time_start = 0
 
-def command_lift(links):
-    global lift_hold_time_start, LIFT_RUNNING, LIFT_HOLDING
-    if LIFT_RUNNING: return
-    LIFT_RUNNING = True
-    LIFT_HOLDING = False
-    starting_position = lift_motor.position(DEGREES)
-    lift_motor.set_velocity(100, PERCENT)
-    lift_motor.set_stopping(HOLD)
-    lift_motor.set_timeout(5, SECONDS)
-    lift_motor.spin_to_position(links * LIFT_DEGREES_PER_LINK, DEGREES)
-    lift_motor.stop()
-    LIFT_RUNNING = False
-    LIFT_HOLDING = True
-    lift_hold_time_start = brain.timer.time(SECONDS)
-    ending_position = lift_motor.position(DEGREES)
-    total_links_moved = (ending_position - starting_position) / LIFT_DEGREES_PER_LINK
-    #print("Lift up from {} to {}, total {} links".format(starting_position, ending_position, total_links_moved))
+    def initialize_lift(self):
+        self.motor1.set_stopping(HOLD)
+        self.motor1.set_velocity(100, PERCENT)
+        self.motor1.set_timeout(3, SECONDS)
+        self.motor1.spin(REVERSE)
+        wait(1, SECONDS)
+        self.motor1.stop(HOLD)
+        wait(100, MSEC)
+        self.motor1.set_position(0, DEGREES)
+        self.motor1.stop(COAST)
 
-def raise_lift():
-    global lift_hold_time_start, LIFT_RUNNING, LIFT_HOLDING
-    if LIFT_RUNNING: return
-    LIFT_RUNNING = True
-    LIFT_HOLDING = False
-    starting_position = lift_motor.position(DEGREES)
-    lift_motor.set_velocity(100, PERCENT)
-    lift_motor.set_stopping(HOLD)
-    lift_motor.set_timeout(5, SECONDS)
-    lift_motor.spin_to_position(LIFT_LINKS * LIFT_DEGREES_PER_LINK, DEGREES)
-    lift_motor.stop()
-    LIFT_RUNNING = False
-    LIFT_HOLDING = True
-    lift_hold_time_start = brain.timer.time(SECONDS)
-    ending_position = lift_motor.position(DEGREES)
-    total_links_moved = (ending_position - starting_position) / LIFT_DEGREES_PER_LINK
-    #print("Lift up from {} to {}, total {} links".format(starting_position, ending_position, total_links_moved))
+    def get_height(self, percent=False):
+        if percent:
+            return (self.motor1.position(DEGREES) / self.LIFT_DEGREES_PER_LINK) * (100 / self.LIFT_LINKS)
+        return self.motor1.position(DEGREES) / self.LIFT_DEGREES_PER_LINK
 
-def lower_lift():
-    global lift_hold_time_start, LIFT_RUNNING, LIFT_HOLDING
-    if LIFT_RUNNING: return
-    LIFT_RUNNING = True
-    LIFT_HOLDING = False
-    starting_position = lift_motor.position(DEGREES)
-    lift_motor.set_velocity(100, PERCENT)
-    lift_motor.set_stopping(HOLD)
-    lift_motor.set_timeout(5, SECONDS)
-    lift_motor.spin_to_position(0, DEGREES)
-    if lift_height(percent=True) <= 1:
-        print("Lift is near the bottom, coasting")
-        lift_motor.stop(COAST)
-    else:
-        lift_motor.stop(HOLD)
-    LIFT_RUNNING = False
-    LIFT_HOLDING = True
-    lift_hold_time_start = brain.timer.time(SECONDS)
-    ending_position = lift_motor.position(DEGREES)
-    total_links_moved = (starting_position - ending_position) / LIFT_DEGREES_PER_LINK
-    #print("Lift down from {} to {}, total {} links".format(starting_position, ending_position, total_links_moved))
+    def is_running(self):
+        return self.running
 
-def check_lift_hold():
-    global lift_hold_time_start, LIFT_RUNNING, LIFT_HOLDING
-    print("Checking lift hold")
-    brain.timer.event(check_lift_hold, 10000)
-    if not LIFT_HOLDING: return
-    if LIFT_RUNNING: return
-    if brain.timer.time(SECONDS) - lift_hold_time_start > 10.0:
-        lift_motor.stop(COAST)
-        LIFT_HOLDING = False
+    def command(self, links):
+        if self.running: return
+
+        self.running = True
+        self.holding = False
+
+        starting_position = self.motor1.position(DEGREES)
+
+        self.motor1.set_velocity(100, PERCENT)
+        self.motor1.set_stopping(HOLD)
+        self.motor1.set_timeout(5, SECONDS)
+        self.motor1.spin_to_position(links * self.LIFT_DEGREES_PER_LINK, DEGREES)
+        self.motor1.stop()
+
+        self.running = False
+        self.holding = True
+        self.hold_time_start = brain.timer.time(SECONDS)
+        ending_position = self.motor1.position(DEGREES)
+        total_links_moved = (ending_position - starting_position) / self.LIFT_DEGREES_PER_LINK
+
+        print("Lift up from {} to {}, total {} links".format(starting_position, ending_position, total_links_moved))
+
+        return total_links_moved
+
+    def raise_lift(self):
+        if self.running: return
+
+        self.running = True
+        self.holding = False
+
+        starting_position = self.motor1.position(DEGREES)
+
+        self.motor1.set_velocity(100, PERCENT)
+        self.motor1.set_stopping(HOLD)
+        self.motor1.set_timeout(5, SECONDS)
+        self.motor1.spin_to_position(self.LIFT_LINKS * self.LIFT_DEGREES_PER_LINK, DEGREES)
+        self.motor1.stop()
+
+        self.running = False
+        self.holding = True
+
+        self.hold_time_start = brain.timer.time(SECONDS)
+        ending_position = self.motor1.position(DEGREES)
+        total_links_moved = (ending_position - starting_position) / self.LIFT_DEGREES_PER_LINK
+
+        print("Lift up from {} to {}, total {} links".format(starting_position, ending_position, total_links_moved))
+        return total_links_moved
+
+    def lower_lift(self):
+        if self.running: return
+
+        self.running = True
+        self.holding = False
+        starting_position = self.motor1.position(DEGREES)
+
+        self.motor1.set_velocity(100, PERCENT)
+        self.motor1.set_stopping(HOLD)
+        self.motor1.set_timeout(5, SECONDS)
+        self.motor1.spin_to_position(0, DEGREES)
+
+        if self.get_height(percent=True) <= 1:
+            print("Lift is near the bottom, coasting")
+            self.motor1.stop(COAST)
+        else:
+            self.motor1.stop(HOLD)
+        self.running = False
+        self.holding = True
+
+        self.hold_time_start = brain.timer.time(SECONDS)
+        ending_position = self.motor1.position(DEGREES)
+        total_links_moved = (starting_position - ending_position) / self.LIFT_DEGREES_PER_LINK
+
+        print("Lift down from {} to {}, total {} links".format(starting_position, ending_position, total_links_moved))
+
+        return total_links_moved
+
+    def check_lift_hold(self):
+        print("Checking lift hold")
+        brain.timer.event(self.check_lift_hold, 10000)
+        if not self.holding: return
+        if self.running: return
+        if brain.timer.time(SECONDS) - self.hold_time_start > 10.0:
+            self.motor1.stop(COAST)
+            self.holding = False
+
+    def stop(self):
+        if lift.running:
+            print("Was Running")
+    
+        lift.motor1.stop(HOLD)
+        lift.holding = True
+        lift.running = False
+    
+        lift.hold_time_start = brain.timer.time(SECONDS)
+
+lift = Lift(lift_motor)
 
 ### CLAW CONTROL
 
-CLAW_INITIALIZED = False
-CLAW_ARM_RUNNING = False
-CLAW_ARM_CANCEL_OPERATION = False
-CLAW_ARM_WAS_CANCELLED = False
-CLAW_ARM_UP_DEGREES = 160 * 3
-CLAW_ARM_MID3_DEGREES = 30 * 3 # was 24.5 * 3
-CLAW_ARM_MID2_DEGREES = 24.5 * 3 # was 24.5 * 3
-CLAW_ARM_MID1_DEGREES = 20 * 3 # was 18 * 3
-CLAW_ARM_DOWN_DEGREES = 0 * 3
-CLAW_ARM_DOWN = 0
-CLAW_ARM_MID1 = 1
-CLAW_ARM_MID2 = 2
-CLAW_ARM_MID3 = 3
-CLAW_ARM_UP = 4
-CLAW_ARM_POSITION = CLAW_ARM_DOWN  # 0 = down, 1 = mid1, 2 = mid2, 3 = mid3, 4 = up
-CLAW_ARM_TIMEOUT = 2.0
-CLAW_ARM_SPEED = 50
+class Arm:
 
-def initialize_claw():
-    global CLAW_INITIALIZED
-    if CLAW_INITIALIZED: return
-    claw_arm_motor1.set_velocity(30, PERCENT)
-    claw_arm_motor1.set_stopping(HOLD)
-    claw_arm_motor1.set_timeout(2, SECONDS)
-    claw_arm_motor2.set_velocity(30, PERCENT)
-    claw_arm_motor2.set_stopping(HOLD)
-    claw_arm_motor2.set_timeout(2, SECONDS)
-    claw_arm_motor1.spin_to_position(-30, DEGREES, wait=False)
-    claw_arm_motor2.spin_to_position(-30, DEGREES)
-    wait(0.25, SECONDS)
-    claw_arm_motor1.set_position(0, DEGREES)
-    claw_arm_motor2.set_position(0, DEGREES)
-    claw_arm_motor1.stop(HOLD)
-    claw_arm_motor2.stop(HOLD)
-    CLAW_INITIALIZED = True
+    CLAW_ARM_UP_DEGREES = 160 * 3
+    CLAW_ARM_MID3_DEGREES = 30 * 3 # was 24.5 * 3
+    CLAW_ARM_MID2_DEGREES = 24.5 * 3 # was 24.5 * 3
+    CLAW_ARM_MID1_DEGREES = 20 * 3 # was 18 * 3
+    CLAW_ARM_DOWN_DEGREES = 0 * 3
 
-CLAW_ARM_COMMAND_NONE = 0
-CLAW_ARM_COMMAND_RAISE = 1
-CLAW_ARM_COMMAND_LOWER = 2
-CLAW_ARM_COMMAND_TO_POSITION = 3
-CLAW_ARM_COMMAND_CANCEL = 5
+    CLAW_ARM_DOWN = 0
+    CLAW_ARM_MID1 = 1
+    CLAW_ARM_MID2 = 2
+    CLAW_ARM_MID3 = 3
+    CLAW_ARM_UP = 4
 
-def run_claw_arm(command, target_position=-1):
-    global CLAW_ARM_RUNNING, CLAW_ARM_POSITION, CLAW_ARM_CANCEL_OPERATION, CLAW_ARM_WAS_CANCELLED
+    CLAW_ARM_TIMEOUT = 2.0
+    CLAW_ARM_SPEED = 50
 
-    # WARNING: RE-ENTRANT CODE
-    if CLAW_ARM_RUNNING and command != CLAW_ARM_COMMAND_CANCEL: return
+    CLAW_ARM_COMMAND_NONE = 0
+    CLAW_ARM_COMMAND_RAISE = 1
+    CLAW_ARM_COMMAND_LOWER = 2
+    CLAW_ARM_COMMAND_TO_POSITION = 3
+    CLAW_ARM_COMMAND_CANCEL = 5
 
-    if command == CLAW_ARM_COMMAND_CANCEL:
-        CLAW_ARM_CANCEL_OPERATION = True
-        return
-    CLAW_ARM_CANCEL_OPERATION = False
-    # END RE-ENTRANT CODE
+    def __init__(self, motor1, motor2):
+        self.motor1 = motor1
+        self.motor2 = motor2
+        self.position = self.CLAW_ARM_DOWN  # 0 = down, 1 = mid1, 2 = mid2, 3 = mid3, 4 = up
+        self.initialized = False
+        self.running = False
+        self.cancel_operation = False
+        self.was_cancelled = False
 
-    positions_list = [CLAW_ARM_DOWN, CLAW_ARM_MID1, CLAW_ARM_MID2, CLAW_ARM_MID3, CLAW_ARM_UP]
-    target_list = [CLAW_ARM_DOWN_DEGREES, CLAW_ARM_MID1_DEGREES, CLAW_ARM_MID2_DEGREES, CLAW_ARM_MID3_DEGREES, CLAW_ARM_UP_DEGREES]
+        self.positions_list = [self.CLAW_ARM_DOWN, self.CLAW_ARM_MID1, self.CLAW_ARM_MID2, self.CLAW_ARM_MID3, self.CLAW_ARM_UP]
+        self.target_list = [self.CLAW_ARM_DOWN_DEGREES, self.CLAW_ARM_MID1_DEGREES, self.CLAW_ARM_MID2_DEGREES, self.CLAW_ARM_MID3_DEGREES, self.CLAW_ARM_UP_DEGREES]
 
-    if command == CLAW_ARM_COMMAND_NONE: return
+    def initialize(self):
+        if self.initialized: return
+        self.motor1.set_velocity(30, PERCENT)
+        self.motor1.set_stopping(HOLD)
+        self.motor1.set_timeout(2, SECONDS)
+        self.motor2.set_velocity(30, PERCENT)
+        self.motor2.set_stopping(HOLD)
+        self.motor2.set_timeout(2, SECONDS)
+        self.motor1.spin_to_position(-30, DEGREES, wait=False)
+        self.motor2.spin_to_position(-30, DEGREES)
+        wait(0.25, SECONDS)
+        self.motor1.set_position(0, DEGREES)
+        self.motor2.set_position(0, DEGREES)
+        self.motor1.stop(HOLD)
+        self.motor2.stop(HOLD)
+        self.initialized = True
 
-    if command == CLAW_ARM_COMMAND_RAISE:
-        if CLAW_ARM_WAS_CANCELLED:
-            claw_target_position = CLAW_ARM_UP
-        else:
-            if CLAW_ARM_POSITION >= CLAW_ARM_UP : return
-            claw_target_position = CLAW_ARM_POSITION + 1
-            # MID3 only used for autonomous
-            if (claw_target_position == CLAW_ARM_MID3): claw_target_position += 1
-        arm_speed = CLAW_ARM_SPEED
-    elif command == CLAW_ARM_COMMAND_LOWER:
-        if CLAW_ARM_WAS_CANCELLED:
-            claw_target_position = CLAW_ARM_DOWN
-        else:
-            if CLAW_ARM_POSITION <= CLAW_ARM_DOWN: return
-            claw_target_position = CLAW_ARM_POSITION - 1
-            # MID3 only used for autonomous
-            if (claw_target_position == CLAW_ARM_MID3): claw_target_position -= 1
-        arm_speed = CLAW_ARM_SPEED * 0.75
-    elif command == CLAW_ARM_COMMAND_TO_POSITION:
-        if target_position == CLAW_ARM_POSITION: return
-        if target_position < CLAW_ARM_DOWN or target_position > CLAW_ARM_UP: return
-        claw_target_position = target_position
-        if target_position > CLAW_ARM_POSITION: arm_speed = CLAW_ARM_SPEED
-        else: arm_speed = CLAW_ARM_SPEED * 0.75
+    def get_position(self):
+        return self.position
 
-    if claw_target_position >= CLAW_ARM_MID3:
-        raise_toggle()
+    def is_initialized(self):
+        return self.initialized
 
-    claw_target_degrees = target_list[claw_target_position]
+    def is_running(self):
+        return self.running
 
-    CLAW_ARM_RUNNING = True
-    CLAW_ARM_WAS_CANCELLED = False
-    starting_position = (claw_arm_motor1.position(DEGREES), claw_arm_motor2.position(DEGREES))
-    claw_arm_motor1.set_velocity(arm_speed, PERCENT)
-    claw_arm_motor1.set_stopping(HOLD)
-    claw_arm_motor1.set_timeout(CLAW_ARM_TIMEOUT, SECONDS)
-    claw_arm_motor2.set_velocity(arm_speed, PERCENT)
-    claw_arm_motor2.set_stopping(HOLD)
-    claw_arm_motor2.set_timeout(CLAW_ARM_TIMEOUT, SECONDS)
-    claw_arm_motor1.spin_to_position(claw_target_degrees, DEGREES, wait=False)
-    claw_arm_motor2.spin_to_position(claw_target_degrees, DEGREES, wait=False)
-    count = 0
-    while not (claw_arm_motor1.is_done() and claw_arm_motor2.is_done()) and not CLAW_ARM_CANCEL_OPERATION: 
-        wait(10, MSEC)
-        count += 1
-    # wait(333, MSEC)
-    claw_arm_motor1.stop()
-    claw_arm_motor2.stop()
-    CLAW_ARM_RUNNING = False
-    if CLAW_ARM_CANCEL_OPERATION:
-        CLAW_ARM_CANCEL_OPERATION = False
-        CLAW_ARM_WAS_CANCELLED = True
-    CLAW_ARM_POSITION = claw_target_position
-    ending_position = (claw_arm_motor1.position(DEGREES), claw_arm_motor2.position(DEGREES))
-    print("Claw from {} to {}, {}ms".format(starting_position, ending_position, count * 10))
+    def run_claw_arm(self, command, target_position=-1):
 
-def raise_claw_arm():
-    run_claw_arm(CLAW_ARM_COMMAND_RAISE)
+        # WARNING: RE-ENTRANT CODE
+        if self.running and command != self.CLAW_ARM_COMMAND_CANCEL: return
 
-def lower_claw_arm():
-    run_claw_arm(CLAW_ARM_COMMAND_LOWER)
+        if command == self.CLAW_ARM_COMMAND_CANCEL:
+            self.cancel_operation = True
+            return
+        self.cancel_operation = False
+        # END RE-ENTRANT CODE
 
-def move_claw_arm_to_position(target_position, unused = 0):
-    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, target_position)
+        if command == self.CLAW_ARM_COMMAND_NONE: return
 
-def claw_arm_current_position():
-    return CLAW_ARM_POSITION
+        if command == self.CLAW_ARM_COMMAND_RAISE:
+            if self.was_cancelled:
+                claw_target_position = self.CLAW_ARM_UP
+            else:
+                if self.position >= self.CLAW_ARM_UP : return
+                claw_target_position = self.position + 1
+                # MID3 only used for autonomous
+                if (claw_target_position == self.CLAW_ARM_MID3): claw_target_position += 1
+            arm_speed = self.CLAW_ARM_SPEED
+        elif command == self.CLAW_ARM_COMMAND_LOWER:
+            if self.was_cancelled:
+                claw_target_position = self.CLAW_ARM_DOWN
+            else:
+                if self.position <= self.CLAW_ARM_DOWN: return
+                claw_target_position = self.position - 1
+                # MID3 only used for autonomous
+                if (claw_target_position == self.CLAW_ARM_MID3): claw_target_position -= 1
+            arm_speed = self.CLAW_ARM_SPEED * 0.75
+        elif command == self.CLAW_ARM_COMMAND_TO_POSITION:
+            if target_position == self.position: return
+            if target_position < self.CLAW_ARM_DOWN or target_position > self.CLAW_ARM_UP: return
+            claw_target_position = target_position
+            if target_position > self.position: arm_speed = self.CLAW_ARM_SPEED
+            else: arm_speed = self.CLAW_ARM_SPEED * 0.75
 
-CLAW_OPEN = 1
-CLAW_CLOSED = 0
+        if claw_target_position >= self.CLAW_ARM_MID3:
+            Toggle.raise_toggle()
 
-def claw_is_open():
-    return claw_solenoid.value() == CLAW_OPEN
+        claw_target_degrees = self.target_list[claw_target_position]
 
-def claw_is_closed():
-    return claw_solenoid.value() == CLAW_CLOSED
+        self.running = True
+        self.was_cancelled = False
+        starting_position = (self.motor1.position(DEGREES), self.motor2.position(DEGREES))
+        self.motor1.set_velocity(arm_speed, PERCENT)
+        self.motor1.set_stopping(HOLD)
+        self.motor1.set_timeout(self.CLAW_ARM_TIMEOUT, SECONDS)
+        self.motor2.set_velocity(arm_speed, PERCENT)
+        self.motor2.set_stopping(HOLD)
+        self.motor2.set_timeout(self.CLAW_ARM_TIMEOUT, SECONDS)
+        self.motor1.spin_to_position(claw_target_degrees, DEGREES, wait=False)
+        self.motor2.spin_to_position(claw_target_degrees, DEGREES, wait=False)
+        count = 0
+        while not (self.motor1.is_done() and self.motor2.is_done()) and not self.cancel_operation: 
+            wait(10, MSEC)
+            count += 1
+        # wait(333, MSEC)
+        self.motor1.stop()
+        self.motor2.stop()
+        self.running = False
+        if self.cancel_operation:
+            self.cancel_operation = False
+            self.was_cancelled = True
+        self.position = claw_target_position
+        ending_position = (self.motor1.position(DEGREES), self.motor2.position(DEGREES))
+        print("Claw from {} to {}, {}ms".format(starting_position, ending_position, count * 10))
 
-claw_open_time = 0
+    def raise_claw_arm(self):
+        self.run_claw_arm(self.CLAW_ARM_COMMAND_RAISE)
 
-def open_claw():
-    global claw_open_time
-    claw_open_time = brain.timer.time(SECONDS)
-    claw_solenoid.set(CLAW_OPEN)
+    def lower_claw_arm(self):
+        self.run_claw_arm(self.CLAW_ARM_COMMAND_LOWER)
 
-def close_claw():
-    claw_solenoid.set(CLAW_CLOSED)
+    def move_claw_arm_to_position(self, target_position, unused = 0):
+        self.run_claw_arm(self.CLAW_ARM_COMMAND_TO_POSITION, target_position)
+
+    def claw_arm_current_position(self):
+        return self.position
+
+arm = Arm(claw_arm_motor1, claw_arm_motor2)
+
+class Claw:
+
+    OPEN = 1
+    CLOSED = 0
+
+    def __init__(self, solenoid):
+        self.solenoid = solenoid
+        self.open_time = 0
+
+    def is_open(self):
+        return self.solenoid.value() == Claw.OPEN
+
+    def is_closed(self):
+        return self.solenoid.value() == Claw.CLOSED
+
+    def open(self):
+        self.open_time = brain.timer.time(SECONDS)
+        self.solenoid.set(Claw.OPEN)
+
+    def close(self):
+        self.solenoid.set(Claw.CLOSED)
+
+claw = Claw(claw_solenoid)
 
 def auto_claw_thread():
     while True:
         current_time = brain.timer.time(SECONDS)
-        claw_ready = (current_time - claw_open_time) > 1
-        if ROBOT_ENABLED and claw_ready and claw_is_open() and lift_height(True) < 1:
-            if (robot_config.enable_auto_claw_down and CLAW_ARM_POSITION == CLAW_ARM_DOWN):
+        claw_ready = (current_time - claw.open_time) > 1
+        if ROBOT_ENABLED and claw_ready and claw.is_open() and lift.get_height(True) < 1:
+            if (robot_config.enable_auto_claw_down and arm.get_position() == Arm.CLAW_ARM_DOWN):
                 if (claw_distance.object_distance() < 70):
-                    close_claw()
+                    claw.close()
                     wait(1, SECONDS)
-            elif (robot_config.enable_auto_claw_mid1 and CLAW_ARM_POSITION == CLAW_ARM_MID1):
+            elif (robot_config.enable_auto_claw_mid1 and arm.get_position() == Arm.CLAW_ARM_MID1):
                 if (claw_distance.object_distance() < 70):
-                    close_claw()
+                    claw.close()
                     wait(1, SECONDS)
         wait(10, MSEC)
 
@@ -449,6 +515,13 @@ def set_quiet_mode(quiet):
     global QUIET_MODE
     QUIET_MODE = quiet
     dt.set_quiet_mode(quiet)
+
+### DISTANCE SENSORS
+
+ENABLE_BACK_DISTANCE = True
+ENABLE_LEFT_DISTANCE = not CALIBRATION
+ENABLE_RIGHT_DISTANCE = True
+ENABLE_LOCATION_FILTER = False
 
 # + 30mm at 1440mm
 # + 22mm at 950mm
@@ -649,18 +722,22 @@ def initialize_distances():
 
 def filter_distance_by_angle(rotation, tolerance):
     # Returns True if angle is valid
-    heading = rotation % 360
+    heading = rotation
 
-    if heading < 0 or heading >= 360:
-        raise ValueError("filter_distance(): Heading must be in the range [0, 360).")
+    heading = rotation % 360.0
+    if heading >= 360.0:
+        heading = 0.0
+        
+    if heading < 0.0 or heading >= 360.0:
+        raise ValueError("filter_distance({}, {}): Heading must be in the range [0, 360).".format(heading, rotation))
     
-    if heading > 360 - tolerance or heading < tolerance:
+    if heading > 360.0 - tolerance or heading < tolerance:
         return True
-    elif heading > 90 - tolerance and heading < 90 + tolerance:
+    elif heading > 90.0 - tolerance and heading < 90.0 + tolerance:
         return True
-    elif heading > 180 - tolerance and heading < 180 + tolerance:
+    elif heading > 180.0 - tolerance and heading < 180.0 + tolerance:
         return True
-    elif heading > 270 - tolerance and heading < 270 + tolerance:
+    elif heading > 270.0 - tolerance and heading < 270.0 + tolerance:
         return True
     return False
 
@@ -674,8 +751,13 @@ EAST = 1
 SOUTH = 2
 WEST = 3
 
-def compass_heading(rotation):
-    heading = rotation % 360
+def compass_heading(rotation: float) -> int:
+    heading = rotation
+
+    heading = rotation % 360.0
+    # needed as floating vs. double precision module may produce slightly different results for values very close to 360.0
+    if heading >= 360.0:
+        heading -= 360.0
 
     if heading >= 315 or heading < 45:
         return NORTH
@@ -717,7 +799,7 @@ def get_back_distance(rotation):
     if not filter_distance_by_angle(rotation, 5):
         return None
 
-    if not filter_distance_by_location(EBACK, X, Y, rotation):
+    if ENABLE_LOCATION_FILTER and not filter_distance_by_location(EBACK, X, Y, rotation):
         return None
 
     new_back1_timestamp = back_distance1.timestamp()
@@ -752,7 +834,7 @@ def get_left_distance(rotation):
     if not filter_distance_by_angle(rotation, 5):
         return None
 
-    if not filter_distance_by_location(ELEFT, X, Y, rotation):
+    if ENABLE_LOCATION_FILTER and not filter_distance_by_location(ELEFT, X, Y, rotation):
         return None
 
     loader_offset = 0
@@ -789,7 +871,7 @@ def get_right_distance(rotation):
     if not filter_distance_by_angle(rotation, 5):
         return None
 
-    if not filter_distance_by_location(ERIGHT, X, Y, rotation):
+    if ENABLE_LOCATION_FILTER and not filter_distance_by_location(ERIGHT, X, Y, rotation):
         return None
 
     loader_offset = 0
@@ -801,7 +883,15 @@ def get_right_distance(rotation):
 
     if new_right_timestamp > previous_right_distance[1]:
         if not right_distance.is_object_detected(): return None
-        new_right_distance_value = right_distance.object_distance(MM) - RIGHT_DISTANCE_CLOSE_ERROR
+        new_right_distance_value = right_distance.object_distance(MM)
+        if new_right_distance_value < RIGHT_DISTANCE_CLOSE_TRANSITION:
+            # Close region just subtract the close value
+            new_right_distance_value -= RIGHT_DISTANCE_CLOSE_ERROR
+        else:
+            # Far region apply linear interpolation using delta between far and close transition and far and close errors
+            slope = (RIGHT_DISTANCE_FAR_ERROR - RIGHT_DISTANCE_CLOSE_ERROR) / (RIGHT_DISTANCE_FAR_TRANSITION - RIGHT_DISTANCE_CLOSE_TRANSITION)
+            error = (new_right_distance_value - RIGHT_DISTANCE_CLOSE_TRANSITION) * slope
+            new_right_distance_value -= error
         new_right_distance_timestamp = new_right_timestamp
         previous_right_distance[0] = new_right_distance_value
         previous_right_distance[1] = new_right_distance_timestamp
@@ -866,10 +956,6 @@ def predict_wheels():
 
     return new_X, new_Y, new_theta
 
-ENABLE_BACK_DISTANCE = True
-ENABLE_LEFT_DISTANCE = not CALIBRATION
-ENABLE_RIGHT_DISTANCE = True
-
 def odom_distance_enable(back, left, right):
     global ENABLE_BACK_DISTANCE, ENABLE_LEFT_DISTANCE, ENABLE_RIGHT_DISTANCE
 
@@ -877,9 +963,13 @@ def odom_distance_enable(back, left, right):
     ENABLE_LEFT_DISTANCE = left
     ENABLE_RIGHT_DISTANCE = right
 
+def odom_location_filter_enable(enable):
+    global ENABLE_LOCATION_FILTER
+    ENABLE_LOCATION_FILTER = enable
+
 def odom_print():
     if not QUIET_MODE:
-        print("X: {:4.0f}/{:0.1f}, Y: {:4.0f}/{:0.1f}, H: {:3.2f}".format(X, Pxx, Y, Pyy, THETA % 360.0))
+        print("X: {:4.0f}/{:0.1f}, Y: {:4.0f}/{:0.1f}, H: {:3.2f}, B: {:.0f}/{:.0f}, L: {:.0f}, R: {:.0f}".format(X, Pxx, Y, Pyy, THETA % 360.0, back_distance1.object_distance(MM), back_distance2.object_distance(MM), left_distance.object_distance(MM), right_distance.object_distance(MM)))
 
 def odom_thread():
     global X, Y, THETA, Pxx, Pyy
@@ -1081,9 +1171,10 @@ def autonomous_calibration():
 
     wait(100, MSEC)
 
-    # drive_for(1200, False, 50, heading = 0)
-    # wait(100, MSEC)
-    # return
+    dt.drive_to_xy(400, 1800, False, 25, heading = 0)
+    dt.drive_to_xy(400, 3000, True, 25, heading = 0)
+    wait(100, MSEC)
+    return
 
     speed = 33
     turn_speed = 75
@@ -1159,47 +1250,47 @@ def autonomous_calibration():
 def autonomous_skills_old():
     # Thread(odom_thread)
     # place automonous code here
-    while not CLAW_INITIALIZED:
+    while not arm.is_initialized():
         wait(10, MSEC)
     wait(1, SECONDS)
-    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID1)
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID1)
     wait(500, MSEC)
     # Thread(log_drivetrain)
     dt.drive_for(51 * 25.4, False, 50, heading = 0)
     dt.drive_for(-450, True, 50, heading = 0)
-    command_lift(13)
+    lift.command(13)
     dt.drive_for(11 * 25.4, False, 50, timeout = 5000, heading = 0)
-    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID2)
-    command_lift(10)
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID2)
+    lift.command(10)
     wait(500, MSEC)
-    open_claw()
+    claw.open()
     dt.drive_for(-150, False, 50, heading = 0)
     # TODO: Move back to safe distance
 
 def autonomous_skills_cup_from_floor():
-    open_claw()
+    claw.open()
     dt.drive_to_xy(900.0, 1800.0, False, 100, heading = 0)
     dt.drive_to_xy(900.0, 2400.0-25, True, 66, heading = 0)
     wait(500, MSEC)
     dt.drive_to_xy(900.0, 2400.0-25.0, True, 66, heading = 0)
     distance = claw_distance.object_distance(MM)
     dt.drive_for(distance - 40, False, 33, heading = 0)
-    close_claw()
+    claw.close()
 
 def autonomous_skills():
-    open_claw()
+    claw.open()
     dt.drive_to_xy(300.0, 1800.0, False, 100, heading = 0)
     dt.turn_for(180, 75)
     dt.drive_to_xy(300.0, 3600-300, True, 66, heading = 180)
     distance = claw_distance.object_distance(MM)
     print("Claw_distance: {}".format(distance))
     dt.drive_for(distance - 70, False, 33, heading = 180)
-    close_claw()
+    claw.close()
     dt.drive_for(50, False, 25, heading = 180)
 
 def autonomous_none():
     # place automonous code here
-    lower_toggle()
+    Toggle.lower_toggle()
     dt.drive_for(50, False, 50, heading = 0)
     dt.drive_for(-50, False, 50, heading = 0)
     dt.drive_for(50, False, 50, heading = 0)
@@ -1208,22 +1299,22 @@ def autonomous_none():
 
 def claw_move1():
     # run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID1)
-    command_lift(5)
+    lift.command(5)
 
 def claw_move2():
-    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
-    command_lift(0)
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
+    lift.command(0)
 
 # Score 7 pins, 3 goals with 2 pins
 def autonomous_left():
     # place automonous code here
 
-    lower_toggle()
+    Toggle.lower_toggle()
     dt.drive_for(50, False, 100, heading = 0)
     dt.drive_for(-50, False, 100, heading = 0)
     dt.drive_for(50, False, 100, heading = 0)
     dt.drive_for(-50, False, 100, heading = 0)
-    raise_toggle()
+    Toggle.raise_toggle()
 
     Thread(claw_move1)
     wait(250, MSEC)
@@ -1234,34 +1325,34 @@ def autonomous_left():
     odom_print()
 
     dt.drive_for(175, False, 50, heading = 0)
-    command_lift(3)
-    open_claw()
+    lift.command(3)
+    claw.open()
 
     dt.drive_to_xy(300, 2400, False, 66, heading = 0)
     dt.drive_to_xy(300, 2400, True, 66, heading = 0)
-    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
-    command_lift(0)
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
+    lift.command(0)
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 180
     dt.turn_for(target_heading - current_heading, 100)
-    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID3)
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID3)
     wait(250, MSEC)
     
-    close_claw()
-    command_lift(5)
-    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
+    claw.close()
+    lift.command(5)
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 0
     dt.turn_for(target_heading - current_heading, 100)
-    command_lift(11)
+    lift.command(11)
     dt.drive_for(175, False, 50, heading = 0)
-    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     wait(250, MSEC)
 
-    command_lift(9)
-    open_claw()
+    lift.command(9)
+    claw.open()
     wait(250, MSEC)
 
     dt.drive_to_xy(300, 2400, False, 66, heading = 0)
@@ -1271,12 +1362,12 @@ def autonomous_left():
 def autonomous_right():
     # place automonous code here
 
-    lower_toggle()
+    Toggle.lower_toggle()
     dt.drive_for(50, False, 50, heading = 0)
     dt.drive_for(-50, False, 50, heading = 0)
     dt.drive_for(50, False, 50, heading = 0)
     dt.drive_for(-50, False, 50, heading = 0)
-    raise_toggle()
+    Toggle.raise_toggle()
 
     Thread(claw_move1)
     wait(250,MSEC)
@@ -1287,34 +1378,34 @@ def autonomous_right():
     odom_print()
 
     dt.drive_for(175, False, 50, heading = 0)
-    command_lift(3)
-    open_claw()
+    lift.command(3)
+    claw.open()
 
     dt.drive_to_xy(300, 1200, False, 66, heading = 0)
     dt.drive_to_xy(300, 1200, True, 66, heading = 0)
-    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
-    command_lift(0)
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
+    lift.command(0)
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 180
     dt.turn_for(target_heading - current_heading, 100)
-    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID3)
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID3)
     wait(250, MSEC)
     
-    close_claw()
-    command_lift(5)
-    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
+    claw.close()
+    lift.command(5)
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 0
     dt.turn_for(target_heading - current_heading, 100)
-    command_lift(11)
+    lift.command(11)
     dt.drive_for(175, False, 50, heading = 0)
-    run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_DOWN)
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     wait(250, MSEC)
 
-    command_lift(9)
-    open_claw()
+    lift.command(9)
+    claw.open()
     wait(250, MSEC)
 
     dt.drive_to_xy(300, 1200, False, 66, heading = 0)
@@ -1330,7 +1421,7 @@ def autonomous():
         wait(100, MSEC)
     ROBOT_ENABLED = True
 
-    Thread(initialize_claw)
+    Thread(arm.initialize)
 
     if CALIBRATION:
         autonomous_calibration()
@@ -1404,82 +1495,88 @@ def pre_autonomous():
 ### USER LIFT AND CLAW CONTROL FUNCTIONS
 # ------------------------------------------------------------ #
 
+lift_thread = None
+
 def StopLift():
-    global lift_thread, lift_hold_time_start, LIFT_RUNNING, LIFT_HOLDING
-    if LIFT_RUNNING:
+    global lift_thread
+
+    if lift.is_running():
         print("Was Running")
         if lift_thread is not None: lift_thread.stop()
-        lift_motor.stop(HOLD)
-        LIFT_HOLDING = True
-        LIFT_RUNNING = False
-        lift_hold_time_start = brain.timer.time(SECONDS)
+        lift.stop()
         return True
+    
     return False
 
 def OnLowerLiftPressed(): # R2
     global lift_thread
+    
     if not ROBOT_ENABLED: return
     if StopLift(): return
-    lift_thread = Thread(lower_lift)
+    def _lower_lift() -> None:
+        lift.lower_lift()
+    lift_thread = Thread(_lower_lift)
 
 def OnRaiseLiftPressed(): # R1
     global lift_thread
     if not ROBOT_ENABLED: return
     if StopLift(): return
-    lift_thread = Thread(raise_lift)
+    def _raise_lift() -> None:
+        lift.raise_lift()
+    lift_thread = Thread(_raise_lift)
 
 def OnLowerClawPressed(): # L2
     if not ROBOT_ENABLED: return
-    if CLAW_ARM_RUNNING:
+    if arm.is_running():
         print("Was Running")
         # claw_arm_motor1.stop(HOLD)
         # claw_arm_motor2.stop(HOLD)
-        run_claw_arm(CLAW_ARM_COMMAND_CANCEL)
+        arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_CANCEL)
         return
 
     pressed_counter = 0
     while pressed_counter < 5: # about 1/4 second
         wait(50, MSEC)
         if not controller_1.buttonL2.pressing():
-            thread = Thread(lower_claw_arm)
+            thread = Thread(arm.lower_claw_arm)
             return
         pressed_counter += 1
 
-    thread = Thread(move_claw_arm_to_position, (CLAW_ARM_DOWN, 0))
+    thread = Thread(arm.move_claw_arm_to_position, (Arm.CLAW_ARM_DOWN, 0))
 
 def OnRaiseClawPressed(): # L1
     if not ROBOT_ENABLED: return
-    if CLAW_ARM_RUNNING:
+    if arm.is_running():
         print("Was Running")
         #claw_arm_motor1.stop(HOLD)
         #claw_arm_motor2.stop(HOLD)
-        run_claw_arm(CLAW_ARM_COMMAND_CANCEL)
+        arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_CANCEL)
         return
 
     pressed_counter = 0
     while pressed_counter < 5: # about 1/4 second
         wait(50, MSEC)
         if not controller_1.buttonL1.pressing():
-            thread = Thread(raise_claw_arm)
+            thread = Thread(arm.raise_claw_arm)
             return
         pressed_counter += 1
 
-    thread = Thread(move_claw_arm_to_position, (CLAW_ARM_UP, 0))
+    thread = Thread(arm.move_claw_arm_to_position, (Arm.CLAW_ARM_UP, 0))
 
 def OnControlButtonAPressed():
     if not ROBOT_ENABLED: return
-    if claw_is_open():
-        close_claw()
+    if claw.is_open():
+        claw.close()
     else:
-        open_claw()
+        claw.open()
     StopLift()
 
 def OnControlButtonBPressed():
     if not ROBOT_ENABLED: return
-    if toggle_raised() and claw_arm_current_position() < CLAW_ARM_MID3:
-        lower_toggle()
+    if Toggle.toggle_raised() and arm.claw_arm_current_position() < Arm.CLAW_ARM_MID3:
+        Toggle.lower_toggle()
     else:
-        raise_toggle()
+        Toggle.raise_toggle()
 
 def OnControlButtonUpPressed():
     global ROBOT_ENABLED
@@ -1622,7 +1719,7 @@ def user_control():
     while not ROBOT_INITIALIZED:
         wait(100, MSEC)
 
-    Thread(initialize_claw)
+    Thread(arm.initialize)
 
     starting_distance, starting_angle = average_back_distance()
     print("Back distance: {}, Back angle: {}".format(starting_distance, starting_angle))
@@ -1704,13 +1801,13 @@ def user_control():
         RAMP_RANGE = MAX_RANP - MIN_RAMP
 
         # Ramp control - forward
-        ramp_max = MAX_RANP - RAMP_RANGE * lift_height(percent=True) / 100
+        ramp_max = MAX_RANP - RAMP_RANGE * lift.get_height(percent=True) / 100
         safe_forward = dt.ramp_limit(raw_forward, last_forward, ramp_max)
         forward = safe_forward
         last_forward = forward
 
         # Ramp control - strafe
-        ramp_max = MAX_RANP - RAMP_RANGE * lift_height(percent=True) / 100
+        ramp_max = MAX_RANP - RAMP_RANGE * lift.get_height(percent=True) / 100
         safe_strafe = dt.ramp_limit(raw_strafe, last_strafe, ramp_max)
         strafe = safe_strafe
         last_strafe = strafe
@@ -1723,9 +1820,12 @@ def user_control():
         forward_tilt = -inertial.orientation(OrientationType.ROLL, DEGREES)
         sideways_tilt = inertial.orientation(OrientationType.PITCH, DEGREES)
         if TILT_ENABLE and (abs(forward_tilt) > 10 or abs(sideways_tilt) > 10):
-            if not LIFT_RUNNING:
+            if not lift.running:
                 # print("Tilting! Forward: {}, Sideways: {}".format(forward_tilt, sideways_tilt))
-                thread = Thread(lower_lift)
+                def lower_lift_for_tilt() -> None:
+                    lift.lower_lift()
+
+                thread = Thread(lower_lift_for_tilt)
 
         #  print("{:.1f}".format(auto_forward))
 
