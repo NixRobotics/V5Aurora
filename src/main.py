@@ -1036,6 +1036,149 @@ def odom_thread():
 
         wait(10, MSEC)
 
+def turns():
+    wait(100, MSEC)
+    dt.turn_for(-10, speed = 50)
+    wait(100, MSEC)
+    dt.turn_for(20, speed = 50)
+    wait(100, MSEC)
+    dt.turn_for(-20, speed = 50)
+    wait(100, MSEC)
+    dt.turn_for(20, speed = 50)
+    wait(100, MSEC)
+    dt.turn_for(-20, speed = 50)
+    wait(100, MSEC)
+    dt.turn_for(20, speed = 50)
+    wait(100, MSEC)
+    dt.turn_for(-20, speed = 50)
+    wait(100, MSEC)
+    left_front_motor.stop(COAST)
+    left_back_motor.stop(COAST)
+    right_front_motor.stop(COAST)
+    right_back_motor.stop(COAST)
+    lift_motor.stop(COAST)
+    claw_arm_motor1.stop(COAST)
+    claw_arm_motor2.stop(COAST)
+
+# NOTE: Current setup seems to have an angle offset of about 1 deg, ie 1.0 to the the cup angle
+# sensor updates are around 100ms
+# sensor lag is about 180-200ms
+
+def center_on_cup():
+    set_quiet_mode(True)
+    claw.open()
+
+    CUP_ID = 4
+
+    # intrinsics
+    fov_h_deg = 74
+    fov_v_deg = 63
+    img_w = 320
+    img_h = 240
+
+    # principal point
+    c_x = img_w / 2.0
+    c_y = img_h / 2.0
+
+    # focal lengths in pixels
+    f_y = (img_h / 2.0) / math.tan(math.radians(fov_v_deg) / 2.0)
+    f_x = (img_w / 2.0) / math.tan(math.radians(fov_h_deg) / 2.0)
+
+    # camera down pitch
+    camera_down_pitch_deg = 24
+    
+    ai = AiVision(Ports.PORT7, AiVision.ALL_AIOBJS)
+
+    loop_count = 0
+    CAMERA_LAG_MS = 199
+    THETA_HISTORY_CAPACITY = 64
+    theta_history_times = [0] * THETA_HISTORY_CAPACITY
+    theta_history_values = [0.0] * THETA_HISTORY_CAPACITY
+    theta_history_next = 0
+    theta_history_count = 0
+    target_heading = THETA
+    error_accum = 0.0
+    have_target = False
+    ALPHA = 0.3
+    save_buffer = []
+    Thread(turns)
+    while loop_count < 500:
+        if True or loop_count % 10 == 0:
+            no_objects = True
+            aiobjects_by_id = sorted(ai.take_snapshot(AiVision.ALL_AIOBJS), key=id)
+
+            snapshot_time = brain.timer.time(MSEC)
+            theta_history_times[theta_history_next] = snapshot_time
+            theta_history_values[theta_history_next] = THETA
+            theta_history_next = (theta_history_next + 1) % THETA_HISTORY_CAPACITY
+            if theta_history_count < THETA_HISTORY_CAPACITY:
+                theta_history_count += 1
+
+            target_sample_time = snapshot_time - CAMERA_LAG_MS
+            delayed_THETA = THETA
+            for history_age in range(theta_history_count):
+                history_index = (theta_history_next - 1 - history_age) % THETA_HISTORY_CAPACITY
+                if theta_history_times[history_index] <= target_sample_time:
+                    delayed_THETA = theta_history_values[history_index]
+                    break
+
+            for aiobject in aiobjects_by_id:
+
+                if aiobject.id == CUP_ID and aiobject.score > 95:
+                    no_objects = False
+
+                    pitch = math.radians(camera_down_pitch_deg)
+
+                    x = (aiobject.centerX - c_x) / f_x
+                    y = (aiobject.centerY - c_y) / f_y
+
+                    cup_angle = math.degrees(math.atan2(
+                        x,
+                        math.cos(pitch) - y * math.sin(pitch)
+                    ))
+
+                    if loop_count < 500:
+                        save_buffer.append([-cup_angle, delayed_THETA, aiobject.centerX, aiobject.centerY, snapshot_time])
+                    cup_heading = (delayed_THETA + cup_angle) % 360
+                    if cup_heading >= 360: cup_heading = 0 # this is needed as python library can prodoce 360 with small negative angles
+                    if not have_target:
+                        target_heading = cup_heading
+                        have_target = True
+                    else:
+                        delta = (cup_heading - target_heading + 180) % 360 - 180
+                        target_heading = (target_heading + ALPHA * delta) % 360
+                    # print(target_heading, aiobject.score)
+                    break
+
+            if no_objects:
+                    if loop_count < 500:
+                        save_buffer.append([0, delayed_THETA, -1, -1, snapshot_time])
+
+        # heading_error = (target_heading - THETA + 180) % 360 - 180
+        # error_accum += heading_error
+
+        # if loop_count % 100 == 0:
+        #    print("Heading error:", heading_error)
+
+        # turn_control = 5.0 * heading_error / 360.0 + 0.01 * error_accum / 360.0
+        # turn_control = XDriveTrain.limit(turn_control, 1.0) * 100.0
+
+        # left_front_motor.spin(FORWARD, turn_control, PERCENT)
+        # left_back_motor.spin(FORWARD, turn_control, PERCENT)
+        # right_front_motor.spin(REVERSE, turn_control, PERCENT)
+        # right_back_motor.spin(REVERSE, turn_control, PERCENT)
+
+        # dt.turn_to(cup_heading, speed = 25, settle_error = 0.5)
+        loop_count += 1
+        wait(10, MSEC)
+
+    print("neg_cpu_angle, delayed_THETA, centerX, centerY, snapshot_time")
+    buffer_count = len(save_buffer)
+    for i in range(buffer_count):
+        entry = save_buffer[i]
+        print("{}, {}, {}, {}, {}".format(entry[0], entry[1], entry[2], entry[3], entry[4]))
+        wait(250, MSEC)
+
 def log_drivetrain():
     global QUIET_MODE
 
@@ -1166,6 +1309,9 @@ def autonomous_calibration():
     #dt.turn_for(90, 25)
     #wait(100, MSEC)
     #return
+
+    center_on_cup()
+    return
 
     odom_distance_enable(True, False, True)
 
