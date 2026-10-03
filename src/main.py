@@ -1455,7 +1455,7 @@ def spin_motors(turns):
     left_front_motor.set_velocity(100, PERCENT)
     left_back_motor.set_velocity(100, PERCENT)
     right_front_motor.set_velocity(100, PERCENT)
-    right_front_motor.set_velocity(100, PERCENT)
+    right_back_motor.set_velocity(100, PERCENT)
 
     left_front_motor.spin_for(FORWARD, turns, TURNS, wait = False)
     left_back_motor.spin_for(FORWARD, turns, TURNS, wait = False)
@@ -1481,9 +1481,6 @@ def autonomous_left():
     # dt.drive_for(50, False, 100, heading = 0)
     # dt.drive_for(-50, False, 100, heading = 0)
     Toggle.raise_toggle()
-
-    while True:
-        wait(1,SECONDS)
 
     Thread(claw_move1)
     wait(250, MSEC)
