@@ -40,7 +40,7 @@ except ImportError:
 ### SETUP DEFAULT ALLIANCE AND AUTONOMOUS SEQUENCE HERE
 # ------------------------------------------------------------ #
 
-CALIBRATION = False
+CALIBRATION = 99
 
 # ALLIANCE_COLOR = AllianceColor.RED
 ALLIANCE_COLOR = AllianceColor.BLUE
@@ -49,6 +49,7 @@ ALLIANCE_COLOR = AllianceColor.BLUE
 AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
 # AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
 # AUTON_SEQUENCE = AutonSequence.MATCH_NONE
+# AUTON_SEQUENCE = CALIBRATION
 
 # ------------------------------------------------------------ #
 ### DECLARE DEVICES
@@ -519,7 +520,7 @@ def set_quiet_mode(quiet):
 ### DISTANCE SENSORS
 
 ENABLE_BACK_DISTANCE = True
-ENABLE_LEFT_DISTANCE = not CALIBRATION
+ENABLE_LEFT_DISTANCE = True
 ENABLE_RIGHT_DISTANCE = True
 ENABLE_LOCATION_FILTER = False
 
@@ -1589,10 +1590,9 @@ def autonomous():
 
     Thread(arm.initialize)
 
-    if CALIBRATION:
+    if AUTON_SEQUENCE == CALIBRATION:
         autonomous_calibration()
-        return
-    if AUTON_SEQUENCE == AutonSequence.SKILLS:
+    elif AUTON_SEQUENCE == AutonSequence.SKILLS:
         autonomous_skills()
     elif AUTON_SEQUENCE == AutonSequence.MATCH_LEFT:
         autonomous_left()
