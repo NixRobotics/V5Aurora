@@ -40,13 +40,13 @@ except ImportError:
 ### SETUP DEFAULT ALLIANCE AND AUTONOMOUS SEQUENCE HERE
 # ------------------------------------------------------------ #
 
-CALIBRATION = True
+CALIBRATION = False
 
-ALLIANCE_COLOR = AllianceColor.RED
-# ALLIANCE_COLOR = AllianceColor.BLUE
+# ALLIANCE_COLOR = AllianceColor.RED
+ALLIANCE_COLOR = AllianceColor.BLUE
 
-AUTON_SEQUENCE = AutonSequence.SKILLS
-# AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
+# AUTON_SEQUENCE = AutonSequence.SKILLS
+AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
 # AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
 # AUTON_SEQUENCE = AutonSequence.MATCH_NONE
 
@@ -850,7 +850,7 @@ def get_left_distance(rotation):
         try:
             error = logistic_error(new_left_distance_value, LEFT_DISTANCE_CLOSE_ERROR)
         except Exception as e:
-            print("Error calculating logistic error: {}, {}".format(e, new_left_distance_value))
+            # print("Error calculating logistic error: {}, {}".format(e, new_left_distance_value))
             error = 0
         new_left_distance_value -= error
         new_left_distance_timestamp = new_left_timestamp
@@ -1451,16 +1451,39 @@ def claw_move2():
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     lift.command(0)
 
+def spin_motors(turns):
+    left_front_motor.set_velocity(100, PERCENT)
+    left_back_motor.set_velocity(100, PERCENT)
+    right_front_motor.set_velocity(100, PERCENT)
+    right_front_motor.set_velocity(100, PERCENT)
+
+    left_front_motor.spin_for(FORWARD, turns, TURNS, wait = False)
+    left_back_motor.spin_for(FORWARD, turns, TURNS, wait = False)
+    right_front_motor.spin_for(FORWARD, turns, TURNS, wait = False)
+    right_back_motor.spin_for(FORWARD, turns, TURNS)
+
+def fast_toggle():
+    turns = (200/math.sqrt(2))/220
+    spin_motors(turns)
+    spin_motors(-turns)
+    spin_motors(turns)
+    spin_motors(-turns)
+
 # Score 7 pins, 3 goals with 2 pins
 def autonomous_left():
     # place automonous code here
 
+
     Toggle.lower_toggle()
-    dt.drive_for(50, False, 100, heading = 0)
-    dt.drive_for(-50, False, 100, heading = 0)
-    dt.drive_for(50, False, 100, heading = 0)
-    dt.drive_for(-50, False, 100, heading = 0)
+    fast_toggle()
+    # dt.drive_for(50, False, 100, heading = 0)
+    # dt.drive_for(-50, False, 100, heading = 0)
+    # dt.drive_for(50, False, 100, heading = 0)
+    # dt.drive_for(-50, False, 100, heading = 0)
     Toggle.raise_toggle()
+
+    while True:
+        wait(1,SECONDS)
 
     Thread(claw_move1)
     wait(250, MSEC)
