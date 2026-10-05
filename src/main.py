@@ -310,17 +310,20 @@ lift = Lift(lift_motor)
 
 class Arm:
 
-    CLAW_ARM_UP_DEGREES = 170 * 3
-    CLAW_ARM_MID3_DEGREES = 30 * 3 # was 24.5 * 3
-    CLAW_ARM_MID2_DEGREES = 24.5 * 3 # was 24.5 * 3
-    CLAW_ARM_MID1_DEGREES = 20 * 3 # was 18 * 3
-    CLAW_ARM_DOWN_DEGREES = 0 * 3
+    CLAW_ARM_UP_DEGREES = 170
+    CLAW_ARM_MID3_DEGREES = 30 # was 24.5 * 3
+    CLAW_ARM_MID2_DEGREES = 24.5 # was 24.5 * 3
+    CLAW_ARM_MID1_DEGREES = 12 # was 18 * 3
+    CLAW_ARM_DOWN_DEGREES = 0
+
+    CLAW_ARM_GEAR_RATIO = 3
 
     CLAW_ARM_DOWN = 0
     CLAW_ARM_MID1 = 1
     CLAW_ARM_MID2 = 2
     CLAW_ARM_MID3 = 3
     CLAW_ARM_UP = 4
+    CLAW_ARM_UNKNOWN = 5
 
     CLAW_ARM_TIMEOUT = 2.0
     CLAW_ARM_SPEED = 50
@@ -329,7 +332,8 @@ class Arm:
     CLAW_ARM_COMMAND_RAISE = 1
     CLAW_ARM_COMMAND_LOWER = 2
     CLAW_ARM_COMMAND_TO_POSITION = 3
-    CLAW_ARM_COMMAND_CANCEL = 5
+    CLAW_ARM_COMMAND_TO_ANGLE = 5
+    CLAW_ARM_COMMAND_CANCEL = 6
 
     def __init__(self, motor1, motor2):
         self.motor1 = motor1
@@ -385,6 +389,8 @@ class Arm:
         if command == self.CLAW_ARM_COMMAND_RAISE:
             if self.was_cancelled:
                 claw_target_position = self.CLAW_ARM_UP
+            elif self.position == self.CLAW_ARM_UNKNOWN:
+                claw_target_position = self.CLAW_ARM_UP
             else:
                 if self.position >= self.CLAW_ARM_UP : return
                 claw_target_position = self.position + 1
@@ -393,6 +399,8 @@ class Arm:
             arm_speed = self.CLAW_ARM_SPEED
         elif command == self.CLAW_ARM_COMMAND_LOWER:
             if self.was_cancelled:
+                claw_target_position = self.CLAW_ARM_DOWN
+            elif self.position == self.CLAW_ARM_UNKNOWN:
                 claw_target_position = self.CLAW_ARM_DOWN
             else:
                 if self.position <= self.CLAW_ARM_DOWN: return
@@ -406,11 +414,16 @@ class Arm:
             claw_target_position = target_position
             if target_position > self.position: arm_speed = self.CLAW_ARM_SPEED
             else: arm_speed = self.CLAW_ARM_SPEED * 0.75
+        elif command == self.CLAW_ARM_COMMAND_TO_ANGLE:
+            claw_target_degrees = target_position
+            claw_target_position = self.CLAW_ARM_UNKNOWN
+            arm_speed = self.CLAW_ARM_SPEED
 
         if claw_target_position >= self.CLAW_ARM_MID3:
             Toggle.raise_toggle()
 
-        claw_target_degrees = self.target_list[claw_target_position]
+        if claw_target_position != self.CLAW_ARM_UNKNOWN:
+            claw_target_degrees = self.target_list[claw_target_position]
 
         self.running = True
         self.was_cancelled = False
@@ -421,8 +434,8 @@ class Arm:
         self.motor2.set_velocity(arm_speed, PERCENT)
         self.motor2.set_stopping(HOLD)
         self.motor2.set_timeout(self.CLAW_ARM_TIMEOUT, SECONDS)
-        self.motor1.spin_to_position(claw_target_degrees, DEGREES, wait=False)
-        self.motor2.spin_to_position(claw_target_degrees, DEGREES, wait=False)
+        self.motor1.spin_to_position(claw_target_degrees * self.CLAW_ARM_GEAR_RATIO, DEGREES, wait=False)
+        self.motor2.spin_to_position(claw_target_degrees * self.CLAW_ARM_GEAR_RATIO, DEGREES, wait=False)
         count = 0
         while not (self.motor1.is_done() and self.motor2.is_done()) and not self.cancel_operation: 
             wait(10, MSEC)
@@ -1445,8 +1458,13 @@ def autonomous_none():
     dt.drive_for(100, False, 50)
 
 def claw_move1():
-    # run_claw_arm(CLAW_ARM_COMMAND_TO_POSITION, CLAW_ARM_MID1)
-    lift.command(5)
+    lift.command(5.5)
+    pin_distance = claw_distance.object_distance(MM)
+    print("Pin distance: {}".format(pin_distance))
+    pin_compensation = (pin_distance - 40) / 1.5
+    angle = int(Arm.CLAW_ARM_MID1_DEGREES + pin_compensation)
+    print("Pin compensation: {}".format(pin_compensation))
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_ANGLE, angle)
 
 def claw_move2():
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
@@ -1497,6 +1515,7 @@ def autonomous_left():
     odom_print()
 
     dt.drive_for(185, False, 50, heading = 0)
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     lift.command(3)
     claw.open()
 
@@ -1767,6 +1786,11 @@ def OnControlButtonUpPressed():
         motor_monitor.mute(False)
         motor_monitor.refresh()
 
+def OnButtonXPressed():
+    if not ROBOT_ENABLED: return
+    # Add the desired functionality for button X here
+    Thread(claw_move1)
+
 samples = []
 
 def add_sample():
@@ -1905,6 +1929,8 @@ def user_control():
     controller_1.buttonL1.pressed(OnRaiseClawPressed)
 
     controller_1.buttonUp.pressed(OnControlButtonUpPressed)
+
+    controller_1.buttonX.pressed(OnButtonXPressed)
 
     # brain.timer.event(check_lift_hold, 10000)
 
