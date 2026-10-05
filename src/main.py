@@ -191,12 +191,12 @@ class Lift:
         self.hold_time_start = 0
 
     def initialize_lift(self):
-        self.motor1.set_stopping(HOLD)
+        self.motor1.set_stopping(BrakeType.HOLD)
         self.motor1.set_velocity(100, PERCENT)
         self.motor1.set_timeout(3, SECONDS)
         self.motor1.spin(REVERSE)
         wait(1, SECONDS)
-        self.motor1.stop(HOLD)
+        self.motor1.stop(BrakeType.HOLD)
         wait(100, MSEC)
         self.motor1.set_position(0, DEGREES)
         self.motor1.stop(COAST)
@@ -218,7 +218,7 @@ class Lift:
         starting_position = self.motor1.position(DEGREES)
 
         self.motor1.set_velocity(100, PERCENT)
-        self.motor1.set_stopping(HOLD)
+        self.motor1.set_stopping(BrakeType.HOLD)
         self.motor1.set_timeout(5, SECONDS)
         self.motor1.spin_to_position(links * self.LIFT_DEGREES_PER_LINK, DEGREES)
         self.motor1.stop()
@@ -242,7 +242,7 @@ class Lift:
         starting_position = self.motor1.position(DEGREES)
 
         self.motor1.set_velocity(100, PERCENT)
-        self.motor1.set_stopping(HOLD)
+        self.motor1.set_stopping(BrakeType.HOLD)
         self.motor1.set_timeout(5, SECONDS)
         self.motor1.spin_to_position(self.LIFT_LINKS * self.LIFT_DEGREES_PER_LINK, DEGREES)
         self.motor1.stop()
@@ -265,15 +265,15 @@ class Lift:
         starting_position = self.motor1.position(DEGREES)
 
         self.motor1.set_velocity(100, PERCENT)
-        self.motor1.set_stopping(HOLD)
+        self.motor1.set_stopping(BrakeType.HOLD)
         self.motor1.set_timeout(5, SECONDS)
         self.motor1.spin_to_position(0, DEGREES)
 
         if self.get_height(percent=True) <= 1:
             print("Lift is near the bottom, coasting")
-            self.motor1.stop(COAST)
+            self.motor1.stop(BrakeType.COAST)
         else:
-            self.motor1.stop(HOLD)
+            self.motor1.stop(BrakeType.HOLD)
         self.running = False
         self.holding = True
 
@@ -291,14 +291,14 @@ class Lift:
         if not self.holding: return
         if self.running: return
         if brain.timer.time(SECONDS) - self.hold_time_start > 10.0:
-            self.motor1.stop(COAST)
+            self.motor1.stop(BrakeType.COAST)
             self.holding = False
 
     def stop(self):
         if lift.running:
             print("Was Running")
     
-        lift.motor1.stop(HOLD)
+        lift.motor1.stop(BrakeType.HOLD)
         lift.holding = True
         lift.running = False
     
@@ -310,7 +310,7 @@ lift = Lift(lift_motor)
 
 class Arm:
 
-    CLAW_ARM_UP_DEGREES = 160 * 3
+    CLAW_ARM_UP_DEGREES = 170 * 3
     CLAW_ARM_MID3_DEGREES = 30 * 3 # was 24.5 * 3
     CLAW_ARM_MID2_DEGREES = 24.5 * 3 # was 24.5 * 3
     CLAW_ARM_MID1_DEGREES = 20 * 3 # was 18 * 3
@@ -346,18 +346,18 @@ class Arm:
     def initialize(self):
         if self.initialized: return
         self.motor1.set_velocity(30, PERCENT)
-        self.motor1.set_stopping(HOLD)
+        self.motor1.set_stopping(BrakeType.HOLD)
         self.motor1.set_timeout(2, SECONDS)
         self.motor2.set_velocity(30, PERCENT)
-        self.motor2.set_stopping(HOLD)
+        self.motor2.set_stopping(BrakeType.HOLD)
         self.motor2.set_timeout(2, SECONDS)
         self.motor1.spin_to_position(-30, DEGREES, wait=False)
         self.motor2.spin_to_position(-30, DEGREES)
         wait(0.25, SECONDS)
         self.motor1.set_position(0, DEGREES)
         self.motor2.set_position(0, DEGREES)
-        self.motor1.stop(HOLD)
-        self.motor2.stop(HOLD)
+        self.motor1.stop(BrakeType.HOLD)
+        self.motor2.stop(BrakeType.HOLD)
         self.initialized = True
 
     def get_position(self):
@@ -1453,10 +1453,15 @@ def claw_move2():
     lift.command(0)
 
 def spin_motors(turns):
-    left_front_motor.set_velocity(100, PERCENT)
-    left_back_motor.set_velocity(100, PERCENT)
+    left_front_motor.set_velocity(85, PERCENT)
+    left_back_motor.set_velocity(85, PERCENT)
     right_front_motor.set_velocity(100, PERCENT)
     right_back_motor.set_velocity(100, PERCENT)
+
+    right_front_motor.set_stopping(BrakeType.HOLD)
+    right_back_motor.set_stopping(BrakeType.HOLD)
+    left_front_motor.set_stopping(BrakeType.HOLD)
+    left_back_motor.set_stopping(BrakeType.HOLD)
 
     left_front_motor.spin_for(FORWARD, turns, TURNS, wait = False)
     left_back_motor.spin_for(FORWARD, turns, TURNS, wait = False)
@@ -1464,9 +1469,10 @@ def spin_motors(turns):
     right_back_motor.spin_for(FORWARD, turns, TURNS)
 
 def fast_toggle():
-    turns = (200/math.sqrt(2))/220
+    turns = 2 * (200/math.sqrt(2))/220
     spin_motors(turns)
     spin_motors(-turns)
+
     spin_motors(turns)
     spin_motors(-turns)
 
@@ -1474,13 +1480,12 @@ def fast_toggle():
 def autonomous_left():
     # place automonous code here
 
-
     Toggle.lower_toggle()
-    fast_toggle()
-    # dt.drive_for(50, False, 100, heading = 0)
-    # dt.drive_for(-50, False, 100, heading = 0)
-    # dt.drive_for(50, False, 100, heading = 0)
-    # dt.drive_for(-50, False, 100, heading = 0)
+    # fast_toggle()
+    dt.drive_for(50, False, 100, heading = 0)
+    dt.drive_for(-50, False, 100, heading = 0)
+    dt.drive_for(50, False, 100, heading = 0)
+    dt.drive_for(-50, False, 100, heading = 0)
     Toggle.raise_toggle()
 
     Thread(claw_move1)
@@ -1491,7 +1496,7 @@ def autonomous_left():
     dt.drive_to_xy(300, 2400, True, 66, heading = 0)
     odom_print()
 
-    dt.drive_for(175, False, 50, heading = 0)
+    dt.drive_for(185, False, 50, heading = 0)
     lift.command(3)
     claw.open()
 
@@ -1502,7 +1507,7 @@ def autonomous_left():
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 180
-    dt.turn_for(target_heading - current_heading, 100)
+    dt.turn_for(target_heading - current_heading, 85)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID3)
     wait(250, MSEC)
     
