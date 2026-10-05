@@ -42,12 +42,12 @@ except ImportError:
 
 CALIBRATION = 99
 
-# ALLIANCE_COLOR = AllianceColor.RED
-ALLIANCE_COLOR = AllianceColor.BLUE
+ALLIANCE_COLOR = AllianceColor.RED
+# ALLIANCE_COLOR = AllianceColor.BLUE
 
 # AUTON_SEQUENCE = AutonSequence.SKILLS
-AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
-# AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
+# AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
+AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
 # AUTON_SEQUENCE = AutonSequence.MATCH_NONE
 # AUTON_SEQUENCE = CALIBRATION
 
@@ -311,7 +311,7 @@ lift = Lift(lift_motor)
 class Arm:
 
     CLAW_ARM_UP_DEGREES = 170
-    CLAW_ARM_MID3_DEGREES = 30 # was 24.5 * 3
+    CLAW_ARM_MID3_DEGREES = 34 # was 24.5 * 3
     CLAW_ARM_MID2_DEGREES = 24.5 # was 24.5 * 3
     CLAW_ARM_MID1_DEGREES = 12 # was 18 * 3
     CLAW_ARM_DOWN_DEGREES = 0
@@ -373,7 +373,7 @@ class Arm:
     def is_running(self):
         return self.running
 
-    def run_claw_arm(self, command, target_position=-1):
+    def run_claw_arm(self, command, target_position=-1, speed=-1):
 
         # WARNING: RE-ENTRANT CODE
         if self.running and command != self.CLAW_ARM_COMMAND_CANCEL: return
@@ -425,6 +425,9 @@ class Arm:
         if claw_target_position != self.CLAW_ARM_UNKNOWN:
             claw_target_degrees = self.target_list[claw_target_position]
 
+        if speed > 0:
+            arm_speed = speed
+
         self.running = True
         self.was_cancelled = False
         starting_position = (self.motor1.position(DEGREES), self.motor2.position(DEGREES))
@@ -457,8 +460,8 @@ class Arm:
     def lower_claw_arm(self):
         self.run_claw_arm(self.CLAW_ARM_COMMAND_LOWER)
 
-    def move_claw_arm_to_position(self, target_position, unused = 0):
-        self.run_claw_arm(self.CLAW_ARM_COMMAND_TO_POSITION, target_position)
+    def move_claw_arm_to_position(self, target_position, speed=-1):
+        self.run_claw_arm(self.CLAW_ARM_COMMAND_TO_POSITION, target_position, speed)
 
     def claw_arm_current_position(self):
         return self.position
@@ -1459,12 +1462,15 @@ def autonomous_none():
 
 def claw_move1():
     lift.command(5.5)
+
+def claw_move10():
     pin_distance = claw_distance.object_distance(MM)
     print("Pin distance: {}".format(pin_distance))
     pin_compensation = (pin_distance - 40) / 1.5
     angle = int(Arm.CLAW_ARM_MID1_DEGREES + pin_compensation)
     print("Pin compensation: {}".format(pin_compensation))
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_ANGLE, angle)
+    lift.command(3)    
 
 def claw_move2():
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
@@ -1498,6 +1504,7 @@ def fast_toggle():
 def autonomous_left():
     # place automonous code here
 
+    print("--- Toggle")
     Toggle.lower_toggle()
     # fast_toggle()
     dt.drive_for(50, False, 100, heading = 0)
@@ -1507,104 +1514,139 @@ def autonomous_left():
     Toggle.raise_toggle()
 
     Thread(claw_move1)
-    wait(250, MSEC)
+    # wait(250, MSEC)
 
+    print("--- Move 1")
     dt.drive_to_xy(300, 1800, False, 66, heading = 0)
     odom_print()
     dt.drive_to_xy(300, 2400, True, 66, heading = 0)
     odom_print()
 
-    dt.drive_for(185, False, 50, heading = 0)
-    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
-    lift.command(3)
+    print("--- Place Pin")
+    dt.drive_for(175, False, 50, heading = 0)
+    claw_move10()
     claw.open()
 
+    print("--- Reverse and recenter")
     dt.drive_to_xy(300, 2400, False, 66, heading = 0)
     dt.drive_to_xy(300, 2400, True, 66, heading = 0)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     lift.command(0)
+
+    print("--- Rotate to wall")
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 180
     dt.turn_for(target_heading - current_heading, 85)
-    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID3)
+
+    print("--- Capture Cup")
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID3, 33)
     wait(250, MSEC)
-    
     claw.close()
     lift.command(5)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
+
+    print("--- Rotate to goal")
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 0
     dt.turn_for(target_heading - current_heading, 100)
-    lift.command(11)
+    lift.command(11.5)
+
+    print("--- Approach scoring position")
     dt.drive_for(175, False, 50, heading = 0)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     wait(250, MSEC)
 
+    print("--- Score Cup")
     lift.command(9)
     claw.open()
     wait(250, MSEC)
 
+    print("--- Reverse and prepare for next move")
     dt.drive_to_xy(300, 2400, False, 66, heading = 0)
     Thread(claw_move2)
-    dt.drive_to_xy(300, 1200, True, 100, heading = 0)
+    dt.drive_to_xy(300, 1800, True, 100, heading = 0)
 
 def autonomous_right():
     # place automonous code here
 
+    odom_print()
+    
+    print("--- Toggle")
+    odom_distance_enable(True, False, False)
     Toggle.lower_toggle()
-    dt.drive_for(50, False, 50, heading = 0)
-    dt.drive_for(-50, False, 50, heading = 0)
-    dt.drive_for(50, False, 50, heading = 0)
-    dt.drive_for(-50, False, 50, heading = 0)
+    dt.drive_for(60, False, 100, heading = 0)
+    dt.drive_for(-70, False, 100, heading = 0)
+    dt.drive_for(60, False, 100, heading = 0)
+    dt.drive_for(-70, False, 100, heading = 0)
     Toggle.raise_toggle()
 
     Thread(claw_move1)
-    wait(250,MSEC)
+    # wait(250,MSEC)
 
-    dt.drive_to_xy(300, 1800, False, 66, heading = 0)
+    print("--- Move 1")
+    dt.drive_to_xy(305, 1800, False, 66, heading = 0)
     odom_print()
-    dt.drive_to_xy(300, 1200, True, 66, heading = 0)
+    dt.drive_to_xy(305, 1190, True, 66, heading = 0)
     odom_print()
 
-    dt.drive_for(175, False, 50, heading = 0)
-    lift.command(3)
+    print("--- Place Pin")
+    dt.drive_for(170, False, 50, heading = 0)
+    claw_move10()
     claw.open()
 
-    dt.drive_to_xy(300, 1200, False, 66, heading = 0)
-    dt.drive_to_xy(300, 1200, True, 66, heading = 0)
+    print("--- Reverse and recenter")
+    dt.drive_to_xy(310, 1190, False, 66, heading = 0)
+    dt.drive_to_xy(310, 1190, True, 66, heading = 0)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     lift.command(0)
+    odom_print()
+
+    print("--- Rotate to wall")
+    odom_print()
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 180
+    odom_distance_enable(False, False, False)
     dt.turn_for(target_heading - current_heading, 100)
-    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID3)
+    odom_print()
+
+    print("--- Capture Cup")
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID3, 33)
     wait(250, MSEC)
-    
     claw.close()
     lift.command(5)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
+
+    print("--- Rotate to goal")
+    odom_print()
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 0
     dt.turn_for(target_heading - current_heading, 100)
-    lift.command(11)
-    dt.drive_for(175, False, 50, heading = 0)
+    odom_distance_enable(True, False, False)
+    lift.command(11.5)
+    odom_print()
+
+    print("--- Approach scoring position")
+    odom_print()
+    dt.drive_for(165, False, 50, heading = 0)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     wait(250, MSEC)
+    odom_print()
 
+    print("--- Score Cup")
     lift.command(9)
     claw.open()
     wait(250, MSEC)
 
-    dt.drive_to_xy(300, 1200, False, 66, heading = 0)
+    print("--- Reverse and prepare for next move")
+    odom_print()
+    dt.drive_to_xy(305, 1200, False, 66, heading = 0)
     Thread(claw_move2)
-
-    dt.drive_to_xy(300, 600, True, 100, heading = 0)
+    dt.drive_to_xy(305, 600, True, 100, heading = 0)
     dt.turn_for(-90, 100)
-
 
 def autonomous():
     global ROBOT_ENABLED
@@ -1930,7 +1972,7 @@ def user_control():
 
     controller_1.buttonUp.pressed(OnControlButtonUpPressed)
 
-    controller_1.buttonX.pressed(OnButtonXPressed)
+    # controller_1.buttonX.pressed(OnButtonXPressed)
 
     # brain.timer.event(check_lift_hold, 10000)
 
@@ -1960,6 +2002,7 @@ def user_control():
     # initialize_lift()
     Thread(auto_claw_thread)
     # Thread(odom_thread)
+    # odom_distance_enable(False, False, False)
 
     ROBOT_ENABLED = True
 
