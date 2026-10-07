@@ -1481,21 +1481,46 @@ def autonomous_skills_old():
     # TODO: Move back to safe distance
 
 def autonomous_skills_cup_from_floor():
+    print("--- Autonomous Skills Cup from Floor ---")
     claw.open()
+    print("--- Drive Forward")
     odom_distance_enable(True, True, False)
+    print("--- Drive To Y=1800")
     dt.drive_to_xy(900.0, 1800.0, False, 66, heading = 0)
     odom_distance_enable(False, True, True)
     dt.drive_to_xy(900.0, 2400.0, True, 66, heading = 0)
-    odom_distance_enable(True, True, True)
-    wait(500, MSEC)
     dt.drive_to_xy(900.0, 2400.0, True, 66, heading = 0)
+    odom_distance_enable(True, True, True)
+    #odom_print()
+    #wait(500, MSEC)
+    #odom_print()
+    #print("--- Recenter")
+    #dt.drive_to_xy(900.0, 2400.0, True, 66, heading = 0)
     distance = claw_distance.object_distance(MM)
-    dt.drive_for(distance - 40, False, 33, heading = 0)
+    print("cup distance: {}".format(distance))
+    dt.drive_for(distance - 30, False, 25, heading = 0)
     claw.close()
+    distance = claw_distance.object_distance(MM)
+    print("cup distance: {}".format(distance))
+
+    # while True: wait(1, SECONDS)
+
+
+BACKGROUND_LIFT_THREAD_DONE = False
+def background_lift_thread(height, arm_position):
+    global BACKGROUND_LIFT_THREAD_DONE
+    BACKGROUND_LIFT_THREAD_DONE = False
+    wait(250, MSEC)
+    lift.command(height)
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, arm_position)
+    BACKGROUND_LIFT_THREAD_DONE = True
 
 def autonomous_skills_turn_and_stack():
+    print("--- Autonomous Skills Turn and Stack ---")
     print("--- Rotate to wall")
-    lift.command(3)
+    lift.command(2)
+    Thread(background_lift_thread, (20, Arm.CLAW_ARM_MID2))
+    # lift.command(3)
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 180
@@ -1503,46 +1528,64 @@ def autonomous_skills_turn_and_stack():
     dt.turn_for(target_heading - current_heading, 50)
     odom_distance_enable(False, True, True)
 
-    lift.command(20)
-    dt.drive_to_xy(770, 2400, False, 50, heading = 180, timeout = 2000)
+    # lift.command(20)
+    dt.drive_to_xy(770, 2400, False, 40, heading = 180, timeout = 1500)
+    while not BACKGROUND_LIFT_THREAD_DONE:
+        wait(50, MSEC)
+    # wait(500, MSEC)
     lift.command(18)
     claw.open()
     wait(250, MSEC)
-    dt.drive_to_xy(900,2400, False, 50, heading = 180)
-    lift.command(0)
-
-def autonomous_skills_turn_and_stack2():
-    lift.command(3)
-    dt.drive_to_xy(900, 3000, False, 50, heading = 180)
-    dt.drive_to_xy(900, 2400, True, 50, heading = 180)
-
-    lift.command(26)
-    dt.drive_to_xy(770, 2400, False, 50, heading = 180, timeout = 2000)
-    lift.command(24)
-    claw.open()
-    wait(250, MSEC)
-    dt.drive_to_xy(900,2400, False, 50, heading = 180)
-    lift.command(0)
-
+    Thread(background_lift_thread, (0, Arm.CLAW_ARM_DOWN))
+    dt.drive_to_xy(900, 2400, False, 50, heading = 180)
 
 def autonomous_skills_cup_from_floor2():
+    print("--- Autonomous Skills Pick Pin from Floor2 ---")
     claw.open()
     dt.drive_to_xy(900.0, 3000, True, 66, heading = 180)
     dt.drive_to_xy(900.0, 3000, True, 66, heading = 180)
     distance = claw_distance.object_distance(MM)
-    dt.drive_for(distance - 40, False, 33, heading = 180)
+    dt.drive_for(distance - 30, False, 33, heading = 180)
     claw.close()
 
-def autonomous_skills_pick_pin():
+def autonomous_skills_turn_and_stack2():
+    print("--- Autonomous Skills Turn and Stack2 ---")
+    lift.command(3)
+    Thread(background_lift_thread, (27, Arm.CLAW_ARM_MID2))
+    dt.drive_to_xy(900, 3000, False, 50, heading = 180)
+    dt.drive_to_xy(900, 2400, True, 50, heading = 180)
+
+    dt.drive_to_xy(770, 2400, False, 40, heading = 180, timeout = 1500)
+    # wait(500, MSEC)
+    while not BACKGROUND_LIFT_THREAD_DONE:
+        wait(50, MSEC)
+
+    lift.command(25)
     claw.open()
-    dt.drive_to_xy(300.0, 1800.0, False, 100, heading = 0)
-    dt.turn_for(180, 75)
-    dt.drive_to_xy(300.0, 3600-300, True, 66, heading = 180)
+    wait(250, MSEC)
+    Thread(background_lift_thread, (0, Arm.CLAW_ARM_DOWN))
+    dt.drive_to_xy(900, 2400, False, 50, heading = 180)
+
+def autonomous_skills_pick_pin():
+    print("--- Autonomous Skills Pick Pin ---")
+    claw.open()
+    odom_distance_enable(False, True, False)
+    dt.drive_to_xy(900.0, 3600-300, True, 66, heading = 180)
+    # dt.turn_for(180, 75)
+    odom_distance_enable(False, True, False)
+    dt.drive_to_xy(300.0, 3600-300, False, 66, heading = 180)
+    odom_distance_enable(False, True, False)
     distance = claw_distance.object_distance(MM)
     print("Claw_distance: {}".format(distance))
     dt.drive_for(distance - 70, False, 33, heading = 180)
     claw.close()
     dt.drive_for(50, False, 25, heading = 180)
+    lift.command(1)
+    dt.drive_to_xy(900.0, 3600-300, False, 66, heading = 180)
+
+def autonomous_skills_to_park():
+    print("--- Autonomous Skills to Park ---")
+    dt.drive_to_xy(900.0, 3600-300, False, 66, heading = 180)
 
 def autonomous_none():
     # place automonous code here
@@ -1752,6 +1795,7 @@ def autonomous_skills():
     autonomous_skills_turn_and_stack()
     autonomous_skills_cup_from_floor2()
     autonomous_skills_turn_and_stack2()
+    autonomous_skills_pick_pin()
 
 def autonomous():
     global ROBOT_ENABLED
