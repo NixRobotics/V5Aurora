@@ -210,7 +210,7 @@ class XDriveTrain():
             else:
                 settle_count = 0
 
-            if (timeout_count > timeout): is_timeout = True
+            if (timeout_count > int(timeout / 10)): is_timeout = True
             if (settle_count > 10): is_settle = True
 
             if is_timeout or is_settle:
@@ -381,7 +381,7 @@ class XDriveTrain():
             filtered_minor_derivative += drive_derivative_alpha * (raw_minor_derivative - filtered_minor_derivative)
 
             # check for timeout and settle conditions
-            if (timeout_count > timeout): is_timeout = True
+            if (timeout_count > int(timeout / 10)): is_timeout = True
             if (settle_count > 10): is_settle = True
 
             if is_timeout or is_settle:
