@@ -42,12 +42,12 @@ except ImportError:
 
 CALIBRATION = 99
 
-ALLIANCE_COLOR = AllianceColor.RED
-# ALLIANCE_COLOR = AllianceColor.BLUE
+# ALLIANCE_COLOR = AllianceColor.RED
+ALLIANCE_COLOR = AllianceColor.BLUE
 
 # AUTON_SEQUENCE = AutonSequence.SKILLS
-# AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
-AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
+AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
+# AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
 # AUTON_SEQUENCE = AutonSequence.MATCH_NONE
 # AUTON_SEQUENCE = CALIBRATION
 
@@ -539,6 +539,7 @@ ENABLE_BACK_DISTANCE = True
 ENABLE_LEFT_DISTANCE = True
 ENABLE_RIGHT_DISTANCE = True
 ENABLE_LOCATION_FILTER = False
+FORCE_LOCATION_RESET = True
 
 # + 30mm at 1440mm
 # + 22mm at 950mm
@@ -990,6 +991,7 @@ def odom_print():
 
 def odom_thread():
     global X, Y, THETA, Pxx, Pyy
+    global FORCE_LOCATION_RESET
     THETA = inertial.rotation()
     initialize_wheels()
     initialize_rotation()
@@ -1009,7 +1011,9 @@ def odom_thread():
             if meas_back_distance is not None:
                 meas_back_distance -= (BACK_DISTANCE1_FROM_BACK + BACK_DISTANCE2_FROM_BACK) / 2 # subtract distance to back of robot
                 meas_back_distance += HIDDEN_PERIMITER + ROBOT_LENGTH / 2 # add the hidden perimeter and half the robot length
-                if compass == NORTH:
+                if FORCE_LOCATION_RESET:
+                    X = meas_back_distance
+                elif compass == NORTH:
                     X, Y = filter.update_x(meas_back_distance)
                 elif compass == SOUTH:
                     X, Y = filter.update_x(3600.0 - meas_back_distance)
@@ -1018,11 +1022,14 @@ def odom_thread():
                 elif compass == EAST:
                     X, Y = filter.update_y(meas_back_distance)
 
+        Y_Right = None
         if ENABLE_RIGHT_DISTANCE:
             meas_right_distance = get_right_distance(THETA)
             if meas_right_distance is not None:
                 meas_right_distance += HIDDEN_PERIMITER + ROBOT_WIDTH / 2 - RIGHT_DISTANCE_FROM_RIGHT
-                if compass == NORTH:
+                if FORCE_LOCATION_RESET:
+                    Y_Right = 3600.0 - meas_right_distance
+                elif compass == NORTH:
                     X, Y = filter.update_y(3600.0 - meas_right_distance)
                 elif compass == SOUTH:
                     X, Y = filter.update_y(meas_right_distance)
@@ -1031,11 +1038,14 @@ def odom_thread():
                 elif compass == EAST:
                     X, Y = filter.update_x(meas_right_distance)
 
+        Y_Left = None
         if ENABLE_LEFT_DISTANCE:
             meas_left_distance = get_left_distance(THETA)
             if meas_left_distance is not None:
                 meas_left_distance += HIDDEN_PERIMITER + ROBOT_WIDTH / 2 - LEFT_DISTANCE_FROM_LEFT
-                if compass == NORTH:
+                if FORCE_LOCATION_RESET:
+                    Y_Left = meas_left_distance
+                elif compass == NORTH:
                     X, Y = filter.update_y(meas_left_distance)
                 elif compass == SOUTH:
                     X, Y = filter.update_y(3600.0 - meas_left_distance)
@@ -1043,6 +1053,15 @@ def odom_thread():
                     X, Y = filter.update_x(meas_left_distance)
                 elif compass == EAST:
                     X, Y = filter.update_x(3600.0 - meas_left_distance)
+
+        if FORCE_LOCATION_RESET:
+            if Y_Right is not None and Y_Left is not None:
+                Y = (Y_Right + Y_Left) / 2.0
+            elif Y_Right is not None:
+                Y = Y_Right
+            elif Y_Left is not None:
+                Y = Y_Left
+            FORCE_LOCATION_RESET = False
 
         Pxx, Pyy = filter.Pxx, filter.Pyy
 
@@ -1537,7 +1556,9 @@ def autonomous_left():
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 180
+    odom_distance_enable(False, False, False)
     dt.turn_for(target_heading - current_heading, 85)
+    odom_distance_enable(False, True, True)
 
     print("--- Capture Cup")
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID3, 33)
@@ -1550,7 +1571,9 @@ def autonomous_left():
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 0
+    odom_distance_enable(False, False, False)
     dt.turn_for(target_heading - current_heading, 100)
+    odom_distance_enable(True, True, True)
     lift.command(11.5)
 
     print("--- Approach scoring position")
@@ -1718,6 +1741,7 @@ def pre_autonomous():
     while (not ROBOT_ENABLED):
         ALLIANCE_COLOR, AUTON_SEQUENCE = ui.get_current_selection()
         wait(10, MSEC)
+    odom_print()
     ui.stop()
 
     motor_monitor = MotorMonitor(brain, all_motors, all_motor_names)
