@@ -45,8 +45,8 @@ CALIBRATION = 99
 # ALLIANCE_COLOR = AllianceColor.RED
 ALLIANCE_COLOR = AllianceColor.BLUE
 
-# AUTON_SEQUENCE = AutonSequence.SKILLS
-AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
+AUTON_SEQUENCE = AutonSequence.SKILLS
+# AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
 # AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
 # AUTON_SEQUENCE = AutonSequence.MATCH_NONE
 # AUTON_SEQUENCE = CALIBRATION
@@ -1451,15 +1451,58 @@ def autonomous_skills_old():
 
 def autonomous_skills_cup_from_floor():
     claw.open()
-    dt.drive_to_xy(900.0, 1800.0, False, 100, heading = 0)
-    dt.drive_to_xy(900.0, 2400.0-25, True, 66, heading = 0)
+    odom_distance_enable(True, True, False)
+    dt.drive_to_xy(900.0, 1800.0, False, 66, heading = 0)
+    odom_distance_enable(False, True, True)
+    dt.drive_to_xy(900.0, 2400.0, True, 66, heading = 0)
+    odom_distance_enable(True, True, True)
     wait(500, MSEC)
-    dt.drive_to_xy(900.0, 2400.0-25.0, True, 66, heading = 0)
+    dt.drive_to_xy(900.0, 2400.0, True, 66, heading = 0)
     distance = claw_distance.object_distance(MM)
     dt.drive_for(distance - 40, False, 33, heading = 0)
     claw.close()
 
-def autonomous_skills():
+def autonomous_skills_turn_and_stack():
+    print("--- Rotate to wall")
+    lift.command(3)
+    current_heading = inertial.rotation()
+    print("Current heading: {}".format(current_heading))
+    target_heading = 180
+    odom_distance_enable(False, False, False)
+    dt.turn_for(target_heading - current_heading, 50)
+    odom_distance_enable(False, True, True)
+
+    lift.command(20)
+    dt.drive_to_xy(770, 2400, False, 50, heading = 180, timeout = 2000)
+    lift.command(18)
+    claw.open()
+    wait(250, MSEC)
+    dt.drive_to_xy(900,2400, False, 50, heading = 180)
+    lift.command(0)
+
+def autonomous_skills_turn_and_stack2():
+    lift.command(3)
+    dt.drive_to_xy(900, 3000, False, 50, heading = 180)
+    dt.drive_to_xy(900, 2400, True, 50, heading = 180)
+
+    lift.command(26)
+    dt.drive_to_xy(770, 2400, False, 50, heading = 180, timeout = 2000)
+    lift.command(24)
+    claw.open()
+    wait(250, MSEC)
+    dt.drive_to_xy(900,2400, False, 50, heading = 180)
+    lift.command(0)
+
+
+def autonomous_skills_cup_from_floor2():
+    claw.open()
+    dt.drive_to_xy(900.0, 3000, True, 66, heading = 180)
+    dt.drive_to_xy(900.0, 3000, True, 66, heading = 180)
+    distance = claw_distance.object_distance(MM)
+    dt.drive_for(distance - 40, False, 33, heading = 180)
+    claw.close()
+
+def autonomous_skills_pick_pin():
     claw.open()
     dt.drive_to_xy(300.0, 1800.0, False, 100, heading = 0)
     dt.turn_for(180, 75)
@@ -1670,6 +1713,14 @@ def autonomous_right():
     Thread(claw_move2)
     dt.drive_to_xy(305, 600, True, 100, heading = 0)
     dt.turn_for(-90, 100)
+
+def autonomous_skills():
+    # 15 seconds
+    # autonomous_left()
+    autonomous_skills_cup_from_floor()
+    autonomous_skills_turn_and_stack()
+    autonomous_skills_cup_from_floor2()
+    autonomous_skills_turn_and_stack2()
 
 def autonomous():
     global ROBOT_ENABLED
