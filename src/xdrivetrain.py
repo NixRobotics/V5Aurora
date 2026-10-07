@@ -2,16 +2,28 @@ from vex import *
 from v5pythonlibrary import InertialWrapper
 from math import radians, degrees, cos, asin, sin, sqrt, pi
 
+BEETLE = False
+
 class XDriveTrain():
 
-    FORWARD_EFFICIENCY = 1 / 1.045
-    LEFT_POWER_SCALING = 1.0
-    RIGHT_POWER_SCALING = 0.85
-    FRONT_POWER_SCALING = 1.0
-    BACK_POWER_SCALING = 1.0
-    DRIVETRAIN_WHEEL_ANGLES = 45.0
-    DRIVETRAIN_WHEEL_SIZE = 220.0
-    DRIVETRAIN_EXTERNAL_GEAR_RATIO = 24/48
+    if BEETLE:
+        FORWARD_EFFICIENCY = 1.0
+        LEFT_POWER_SCALING = 1.0
+        RIGHT_POWER_SCALING = 1.0
+        FRONT_POWER_SCALING = 1.0
+        BACK_POWER_SCALING = 1.0
+        DRIVETRAIN_WHEEL_ANGLES = 45.0
+        DRIVETRAIN_WHEEL_SIZE = 260.0
+        DRIVETRAIN_EXTERNAL_GEAR_RATIO = 1.0
+    else:
+        FORWARD_EFFICIENCY = 1 / 1.045
+        LEFT_POWER_SCALING = 1.0
+        RIGHT_POWER_SCALING = 0.85
+        FRONT_POWER_SCALING = 1.0
+        BACK_POWER_SCALING = 1.0
+        DRIVETRAIN_WHEEL_ANGLES = 45.0
+        DRIVETRAIN_WHEEL_SIZE = 220.0
+        DRIVETRAIN_EXTERNAL_GEAR_RATIO = 24/48
 
     def __init__(self, lfm: Motor, lbm: Motor, rfm: Motor, rbm: Motor, g: InertialWrapper, location_callback: Callable):
         self.lfm = lfm

@@ -42,8 +42,8 @@ except ImportError:
 
 CALIBRATION = 99
 
-# ALLIANCE_COLOR = AllianceColor.RED
-ALLIANCE_COLOR = AllianceColor.BLUE
+ALLIANCE_COLOR = AllianceColor.RED
+# ALLIANCE_COLOR = AllianceColor.BLUE
 
 AUTON_SEQUENCE = AutonSequence.SKILLS
 # AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
@@ -54,6 +54,9 @@ AUTON_SEQUENCE = AutonSequence.SKILLS
 # ------------------------------------------------------------ #
 ### DECLARE DEVICES
 # ------------------------------------------------------------ #
+
+BEETLE = False
+
 brain=Brain()
 
 # Robot configuration code
@@ -62,14 +65,24 @@ claw_arm_motor2 = Motor(Ports.PORT11, GearSetting.RATIO_18_1, True)
 lift_motor = Motor(Ports.PORT10, GearSetting.RATIO_18_1, False)
 controller_1 = Controller(PRIMARY)
 
-left_front_motor = Motor(Ports.PORT1, GearSetting.RATIO_6_1, True)
-left_back_motor = Motor(Ports.PORT13, GearSetting.RATIO_6_1, True)
-right_front_motor = Motor(Ports.PORT3, GearSetting.RATIO_6_1, False)
-right_back_motor = Motor(Ports.PORT12, GearSetting.RATIO_6_1, False)
-DRIVETRAIN_EXTERNAL_GEAR_RATIO = 24/48
-DRIVETRAIN_WHEEL_ANGLES = 45 # deg from straight
-DRIVETRAIN_WHEEL_SIZE = 220 # mm circumference
-DRIVETRAIN_MAX_TORQUE = 0.35 # Nm
+if BEETLE:
+    left_front_motor = Motor(Ports.PORT1, GearSetting.RATIO_18_1, False)
+    left_back_motor = Motor(Ports.PORT13, GearSetting.RATIO_18_1, False)
+    right_front_motor = Motor(Ports.PORT3, GearSetting.RATIO_18_1, True)
+    right_back_motor = Motor(Ports.PORT12, GearSetting.RATIO_18_1, True)
+    DRIVETRAIN_EXTERNAL_GEAR_RATIO = 1
+    DRIVETRAIN_WHEEL_ANGLES = 45 # deg from straight
+    DRIVETRAIN_WHEEL_SIZE = 260 # mm circumference
+    DRIVETRAIN_MAX_TORQUE = 1.05 # Nm
+else:
+    left_front_motor = Motor(Ports.PORT1, GearSetting.RATIO_6_1, True)
+    left_back_motor = Motor(Ports.PORT13, GearSetting.RATIO_6_1, True)
+    right_front_motor = Motor(Ports.PORT3, GearSetting.RATIO_6_1, False)
+    right_back_motor = Motor(Ports.PORT12, GearSetting.RATIO_6_1, False)
+    DRIVETRAIN_EXTERNAL_GEAR_RATIO = 24/48
+    DRIVETRAIN_WHEEL_ANGLES = 45 # deg from straight
+    DRIVETRAIN_WHEEL_SIZE = 220 # mm circumference
+    DRIVETRAIN_MAX_TORQUE = 0.35 # Nm
 
 inertial = InertialWrapper(Ports.PORT5, 181.5/180.0)
 claw_distance = Distance(Ports.PORT2)
@@ -722,9 +735,20 @@ def initialize_wheels():
 
 def initialize_rotation():
     global previous_rotation_positions
-    rotation_fwd.set_position(0, TURNS)
-    rotation_side.set_position(0, TURNS)
-    previous_rotation_positions = [rotation_fwd.position(TURNS), rotation_side.position(TURNS)]
+
+    if rotation_fwd.installed():
+        rotation_fwd.set_position(0, TURNS)
+        rotation_fwd_position = rotation_fwd.position(TURNS)
+    else:
+        rotation_fwd_position = None
+
+    if rotation_side.installed():
+        rotation_side.set_position(0, TURNS)
+        rotation_side_position = rotation_side.position(TURNS)
+    else:
+        rotation_side_position = None
+
+    previous_rotation_positions = [rotation_fwd_position, rotation_side_position]
 
 def initialize_distances():
     global previous_back_distance, previous_left_distance, previous_right_distance
@@ -927,7 +951,14 @@ def predict_wheels():
     global previous_rotation_positions
 
     current_motor_positions = [left_front_motor.position(TURNS), left_back_motor.position(TURNS), right_front_motor.position(TURNS), right_back_motor.position(TURNS)]
-    current_rotation_positions = [rotation_fwd.position(TURNS), rotation_side.position(TURNS)]
+
+    if not rotation_fwd.installed(): rotation_fwd_position = None
+    else: rotation_fwd_position = rotation_fwd.position(TURNS)
+
+    if not rotation_side.installed(): rotation_side_position = None
+    else: rotation_side_position = rotation_side.position(TURNS)
+
+    current_rotation_positions = [rotation_fwd_position, rotation_side_position]
     current_theta = inertial.rotation()
 
     delta_motor_forward, delta_motor_side = motor_distance_step(current_motor_positions, previous_motor_positions)
@@ -1292,8 +1323,8 @@ def log_odom():
             dt.last_fwd_command,
             dt.last_strafe_command,
             dt.last_turn_command,
-            previous_rotation_positions[0] * ROTATION_FWD_WHEEL_SIZE,
-            previous_rotation_positions[1] * ROTATION_FWD_WHEEL_SIZE,
+            previous_rotation_positions[0] * ROTATION_FWD_WHEEL_SIZE if previous_rotation_positions[0] is not None else 0.0,
+            previous_rotation_positions[1] * ROTATION_FWD_WHEEL_SIZE if previous_rotation_positions[1] is not None else 0.0,
             previous_left_distance[0],
             previous_right_distance[0],
             previous_back_distance[0],
@@ -1743,8 +1774,13 @@ def autonomous():
 
 pitch_offset = 0.0
 
+CONNECTION_CHECKER_MUTE = False
 def connection_checker():
     while True:
+        if CONNECTION_CHECKER_MUTE:
+            wait(1000, MSEC)
+            continue
+        brain.screen.set_cursor(1, 1)
         cleared = False
         for sensor, name in zip(all_sensors, all_sensors_names):
             if not sensor.installed():
@@ -1761,6 +1797,10 @@ def connection_checker():
                 brain.screen.print("Motor {} is not connected!".format(name))
                 brain.screen.new_line()
         wait(1000, MSEC)
+
+def connection_checker_mute(mute):
+    global CONNECTION_CHECKER_MUTE
+    CONNECTION_CHECKER_MUTE = mute
 
 def pre_autonomous():
     global ROBOT_INITIALIZED
@@ -1897,11 +1937,13 @@ def OnControlButtonUpPressed():
     # Button has been held for 30 cycles (3 seconds)
     ROBOT_ENABLED = False
     if motor_monitor is not None: motor_monitor.mute(True)
+    connection_checker_mute(True)
     robot_config.configuration_UI()
     ROBOT_ENABLED = True
     if motor_monitor is not None:
         motor_monitor.mute(False)
         motor_monitor.refresh()
+    connection_checker_mute(False)
 
 def OnButtonXPressed():
     if not ROBOT_ENABLED: return
