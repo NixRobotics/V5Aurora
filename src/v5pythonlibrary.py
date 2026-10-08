@@ -897,10 +897,9 @@ class Logger:
     Smart data capture for VEX devices and optional user-defined data fields. Logs data to the Brain's SD card in CSV format.\\
     Currently supports Motor, MotorGroup, Inertial, and Rotation devices.
     '''
-
     def __init__(self,
                  brain: Brain,
-                 devices: List, headers: List,
+                 devices: List, headers: List, include_device_times = False,
                  data_headers: List | None = None, data_fields_callback: Callable | None = None,
                  max_length: int = -1, time_sec: int = -1,
                  rate_ms: int = 10,
@@ -961,6 +960,8 @@ class Logger:
         :type devices: List
         :param headers: List of strings that will be used as headers for each column of the .csv file, e.g. ["motor1", "inertial1"]
         :type headers: List
+        :param include_device_times: If True, include the timestamps for each device in the log
+        :type include_device_times: bool
         :param data_headers: List of strings for user-defined data fields to log, e.g. ["custom1", "custom2"]
         :type data_headers: List | None
         :param data_fields_callback: Callback function that returns a list of float values for the user-defined data fields as a tuple,

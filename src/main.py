@@ -1486,22 +1486,35 @@ def autonomous_skills_cup_from_floor():
     print("--- Drive Forward")
     odom_distance_enable(True, True, False)
     print("--- Drive To Y=1800")
-    dt.drive_to_xy(900.0, 1800.0, False, 66, heading = 0)
-    odom_distance_enable(False, True, True)
+    dt.drive_to_xy(900.0, 2100.0, False, 66, heading = 0)
+    odom_distance_enable(False, False, True)
     dt.drive_to_xy(900.0, 2400.0, True, 66, heading = 0)
     dt.drive_to_xy(900.0, 2400.0, True, 66, heading = 0)
-    odom_distance_enable(True, True, True)
+    odom_distance_enable(True, False, True)
     #odom_print()
     #wait(500, MSEC)
     #odom_print()
     #print("--- Recenter")
     #dt.drive_to_xy(900.0, 2400.0, True, 66, heading = 0)
-    distance = claw_distance.object_distance(MM)
-    print("cup distance: {}".format(distance))
+
+    if claw_distance.is_object_detected():
+        distance = claw_distance.object_distance(MM)
+        print("cup distance: {}".format(distance))
+        if distance > 250: return True
+    else:
+        return True
+    
     dt.drive_for(distance - 30, False, 25, heading = 0)
     claw.close()
-    distance = claw_distance.object_distance(MM)
-    print("cup distance: {}".format(distance))
+
+    if claw_distance.is_object_detected():
+        distance = claw_distance.object_distance(MM)
+        print("cup distance: {}".format(distance))
+        if distance > 100: return True
+    else:
+        return False
+
+    return False
 
     # while True: wait(1, SECONDS)
 
@@ -1536,17 +1549,47 @@ def autonomous_skills_turn_and_stack():
     lift.command(18)
     claw.open()
     wait(250, MSEC)
+    dt.drive_to_xy(850, 2400, False, 40, heading = 180)
+    if claw_distance.is_object_detected():
+        distance = claw_distance.object_distance(MM)
+        print("cup distance: {}".format(distance))
+        if distance > 200:
+            arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
+            return True
+    else:
+        print("no cup detected")
+        return True
     Thread(background_lift_thread, (0, Arm.CLAW_ARM_DOWN))
     dt.drive_to_xy(900, 2400, False, 50, heading = 180)
+
+    return False
 
 def autonomous_skills_cup_from_floor2():
     print("--- Autonomous Skills Pick Pin from Floor2 ---")
     claw.open()
     dt.drive_to_xy(900.0, 3000, True, 66, heading = 180)
     dt.drive_to_xy(900.0, 3000, True, 66, heading = 180)
-    distance = claw_distance.object_distance(MM)
+
+    if claw_distance.is_object_detected():
+        distance = claw_distance.object_distance(MM)
+        print("cup distance: {}".format(distance))
+        if distance > 250: return True
+    else:
+        print("no cup detected")
+        return True
+    
     dt.drive_for(distance - 30, False, 33, heading = 180)
     claw.close()
+
+    if claw_distance.is_object_detected():
+        distance = claw_distance.object_distance(MM)
+        print("cup distance: {}".format(distance))
+        if distance > 100: return True
+    else:
+        print("no cup detected")
+        return True
+    
+    return False
 
 def autonomous_skills_turn_and_stack2():
     print("--- Autonomous Skills Turn and Stack2 ---")
@@ -1563,8 +1606,16 @@ def autonomous_skills_turn_and_stack2():
     lift.command(25)
     claw.open()
     wait(250, MSEC)
+    dt.drive_to_xy(850, 2400, False, 40, heading = 180)
+    if claw_distance.is_object_detected():
+        distance = claw_distance.object_distance(MM)
+        print("cup distance: {}".format(distance))
+        if distance > 200:
+            arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
+            return True
     Thread(background_lift_thread, (0, Arm.CLAW_ARM_DOWN))
     dt.drive_to_xy(900, 2400, False, 50, heading = 180)
+    return False
 
 def autonomous_skills_pick_pin():
     print("--- Autonomous Skills Pick Pin ---")
@@ -1640,32 +1691,42 @@ def fast_toggle():
 def autonomous_left():
     # place automonous code here
 
+    log = Logger(brain,
+            [left_front_motor, left_back_motor, right_front_motor, right_back_motor] + [inertial, rotation_fwd, rotation_side],
+            ["lfm", "lbm", "rfm", "rbm", "gyro", "fwd", "side"], False,
+            ["y", "x", "b1", "b2", "l", "r"], OnLoggerPositionCallbackDist,
+            time_sec = 15, rate_ms = 20,
+            auto_dump = True, file_name = "aurora_left"
+            )
+    log.start()
+
     print("--- Toggle")
     Toggle.lower_toggle()
     # fast_toggle()
-    dt.drive_for(50, False, 100, heading = 0)
-    dt.drive_for(-50, False, 100, heading = 0)
-    dt.drive_for(50, False, 100, heading = 0)
-    dt.drive_for(-50, False, 100, heading = 0)
+    dt.drive_for(60, False, 100, heading = 0)
+    dt.drive_for(-70, False, 100, heading = 0)
+    dt.drive_for(60, False, 100, heading = 0)
+    dt.drive_for(-70, False, 100, heading = 0)
     Toggle.raise_toggle()
 
     Thread(claw_move1)
     # wait(250, MSEC)
 
     print("--- Move 1")
-    dt.drive_to_xy(300, 1800, False, 66, heading = 0)
+    odom_distance_enable(True, False, True)
+    dt.drive_to_xy(305, 1800, False, 66, heading = 0)
     odom_print()
-    dt.drive_to_xy(300, 2400, True, 66, heading = 0)
+    dt.drive_to_xy(305, 2400, True, 66, heading = 0)
     odom_print()
 
     print("--- Place Pin")
-    dt.drive_for(175, False, 50, heading = 0)
+    dt.drive_for(170, False, 50, heading = 0)
     claw_move10()
     claw.open()
 
     print("--- Reverse and recenter")
-    dt.drive_to_xy(300, 2400, False, 66, heading = 0)
-    dt.drive_to_xy(300, 2400, True, 66, heading = 0)
+    dt.drive_to_xy(310, 2400, False, 66, heading = 0)
+    dt.drive_to_xy(310, 2400, True, 66, heading = 0)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     lift.command(0)
 
@@ -1690,11 +1751,11 @@ def autonomous_left():
     target_heading = 0
     odom_distance_enable(False, False, False)
     dt.turn_for(target_heading - current_heading, 100)
-    odom_distance_enable(True, True, True)
+    odom_distance_enable(True, False, True)
     lift.command(11.5)
 
     print("--- Approach scoring position")
-    dt.drive_for(175, False, 50, heading = 0)
+    dt.drive_for(165, False, 50, heading = 0)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     wait(250, MSEC)
 
@@ -1704,9 +1765,10 @@ def autonomous_left():
     wait(250, MSEC)
 
     print("--- Reverse and prepare for next move")
-    dt.drive_to_xy(300, 2400, False, 66, heading = 0)
+    dt.drive_to_xy(310, 2400, False, 66, heading = 0)
     Thread(claw_move2)
-    dt.drive_to_xy(300, 1800, True, 100, heading = 0)
+    odom_distance_enable(True, False, False)
+    dt.drive_to_xy(310, 2100, True, 66, heading = 0)
 
 def autonomous_right():
     # place automonous code here
@@ -1789,25 +1851,40 @@ def autonomous_right():
     dt.turn_for(-90, 100)
 
 def OnLoggerPositionCallbackDist():
-    return X, Y, back_distance1.object_distance(MM), back_distance2.object_distance(MM), left_distance.object_distance(MM), right_distance.object_distance(MM)
+    return Y, X, back_distance1.object_distance(MM), back_distance2.object_distance(MM), left_distance.object_distance(MM), right_distance.object_distance(MM)
 
 def autonomous_skills():
     log = Logger(brain,
                 [left_front_motor, left_back_motor, right_front_motor, right_back_motor] + [inertial, rotation_fwd, rotation_side],
-                ["lfm", "lbm", "rfm", "rbm", "gyro", "fwd", "side"],
-                ["x", "y", "b1", "b2", "l", "r"], OnLoggerPositionCallbackDist,
-                time_sec = 30, rate_ms = 20,
+                ["lfm", "lbm", "rfm", "rbm", "gyro", "fwd", "side"], False,
+                ["y", "x", "b1", "b2", "l", "r"], OnLoggerPositionCallbackDist,
+                time_sec = 45, rate_ms = 20,
                 auto_dump = True, file_name = "aurora_skills"
                 )
     log.start()
 
     # 15 seconds
-    # autonomous_left()
-    autonomous_skills_cup_from_floor()
-    autonomous_skills_turn_and_stack()
-    autonomous_skills_cup_from_floor2()
-    autonomous_skills_turn_and_stack2()
-    autonomous_skills_pick_pin()
+    autonomous_left()
+    failed = autonomous_skills_cup_from_floor()
+    if failed:
+        print("Failed to pick up cup from floor.")
+        return
+    failed = autonomous_skills_turn_and_stack()
+    if failed:
+        print("Failed to turn and stack.")
+        return
+    failed = autonomous_skills_cup_from_floor2()
+    if failed:
+        print("Failed to pick up cup from floor 2.")
+        return
+    failed = autonomous_skills_turn_and_stack2()
+    if failed:
+        print("Failed to turn and stack 2.")
+        return
+    failed = autonomous_skills_pick_pin()
+    if failed:
+        print("Failed to pick pin.")
+        return
 
 def autonomous():
     global ROBOT_ENABLED
