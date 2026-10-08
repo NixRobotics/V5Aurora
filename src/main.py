@@ -1788,7 +1788,19 @@ def autonomous_right():
     dt.drive_to_xy(305, 600, True, 100, heading = 0)
     dt.turn_for(-90, 100)
 
+def OnLoggerPositionCallbackDist():
+    return X, Y, back_distance1.object_distance(MM), back_distance2.object_distance(MM), left_distance.object_distance(MM), right_distance.object_distance(MM)
+
 def autonomous_skills():
+    log = Logger(brain,
+                [left_front_motor, left_back_motor, right_front_motor, right_back_motor] + [inertial, rotation_fwd, rotation_side],
+                ["lfm", "lbm", "rfm", "rbm", "gyro", "fwd", "side"],
+                ["x", "y", "b1", "b2", "l", "r"], OnLoggerPositionCallbackDist,
+                time_sec = 30, rate_ms = 20,
+                auto_dump = True, file_name = "aurora_skills"
+                )
+    log.start()
+
     # 15 seconds
     # autonomous_left()
     autonomous_skills_cup_from_floor()
