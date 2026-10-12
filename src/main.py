@@ -60,21 +60,25 @@ BEETLE = False
 brain=Brain()
 
 # Robot configuration code
-claw_arm_motor1 = Motor(Ports.PORT19, GearSetting.RATIO_18_1, False)
-claw_arm_motor2 = Motor(Ports.PORT11, GearSetting.RATIO_18_1, True)
 lift_motor = Motor(Ports.PORT10, GearSetting.RATIO_18_1, False)
 controller_1 = Controller(PRIMARY)
 
 if BEETLE:
+    claw_arm_motor1 = Motor(Ports.PORT19, GearSetting.RATIO_18_1, False)
+    claw_arm_motor2 = Motor(Ports.PORT12, GearSetting.RATIO_18_1, True)
+
     left_front_motor = Motor(Ports.PORT1, GearSetting.RATIO_18_1, False)
     left_back_motor = Motor(Ports.PORT13, GearSetting.RATIO_18_1, False)
     right_front_motor = Motor(Ports.PORT3, GearSetting.RATIO_18_1, True)
-    right_back_motor = Motor(Ports.PORT12, GearSetting.RATIO_18_1, True)
+    right_back_motor = Motor(Ports.PORT11, GearSetting.RATIO_18_1, True)
     DRIVETRAIN_EXTERNAL_GEAR_RATIO = 1
     DRIVETRAIN_WHEEL_ANGLES = 45 # deg from straight
     DRIVETRAIN_WHEEL_SIZE = 260 # mm circumference
     DRIVETRAIN_MAX_TORQUE = 1.05 # Nm
 else:
+    claw_arm_motor1 = Motor(Ports.PORT19, GearSetting.RATIO_18_1, False)
+    claw_arm_motor2 = Motor(Ports.PORT11, GearSetting.RATIO_18_1, True)
+
     left_front_motor = Motor(Ports.PORT1, GearSetting.RATIO_6_1, True)
     left_back_motor = Motor(Ports.PORT13, GearSetting.RATIO_6_1, True)
     right_front_motor = Motor(Ports.PORT3, GearSetting.RATIO_6_1, False)
