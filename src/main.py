@@ -838,14 +838,20 @@ def filter_distance_by_location(direction, x, y, rotation):
         elif compass == WEST: return x < 1800
 
     return False
-    
-def get_back_distance(rotation):
-    global previous_back_distance
 
-    if not filter_distance_by_angle(rotation, 5):
+LAST_VALID_BACK_DISTANCE1 = -1
+LAST_VALID_BACK_DISTANCE2 = -1
+def get_back_distance(rotation):
+    global previous_back_distance, LAST_VALID_BACK_DISTANCE1, LAST_VALID_BACK_DISTANCE2
+
+    if not filter_distance_by_angle(rotation, 3):
+        # LAST_VALID_BACK_DISTANCE1 = -1
+        # LAST_VALID_BACK_DISTANCE2 = -1
         return None
 
     if ENABLE_LOCATION_FILTER and not filter_distance_by_location(EBACK, X, Y, rotation):
+        # LAST_VALID_BACK_DISTANCE1 = -1
+        # LAST_VALID_BACK_DISTANCE2 = -1
         return None
 
     new_back1_timestamp = back_distance1.timestamp()
@@ -854,7 +860,10 @@ def get_back_distance(rotation):
     max_timestamp = max(new_back1_timestamp, new_back2_timestamp)
 
     if max_timestamp > previous_back_distance[1]:
-        if not back_distance1.is_object_detected() or not back_distance2.is_object_detected(): return None
+        if not back_distance1.is_object_detected() or not back_distance2.is_object_detected():
+            # LAST_VALID_BACK_DISTANCE1 = -1
+            # LAST_VALID_BACK_DISTANCE2 = -1
+            return None
         new_back1 = back_distance1.object_distance(MM) - BACK_DISTANCE1_CLOSE_ERROR
         new_back2 = back_distance2.object_distance(MM) - BACK_DISTANCE2_CLOSE_ERROR
         new_back_distance_value = (new_back1 + new_back2) / 2.0
@@ -862,7 +871,12 @@ def get_back_distance(rotation):
         previous_back_distance[0] = new_back_distance_value
         previous_back_distance[1] = new_back_distance_timestamp
 
+        LAST_VALID_BACK_DISTANCE1 = new_back1
+        LAST_VALID_BACK_DISTANCE2 = new_back2
+
         if new_back_distance_value > 1700.0:
+            # LAST_VALID_BACK_DISTANCE1 = -1
+            # LAST_VALID_BACK_DISTANCE2 = -1
             return None
         
         return new_back_distance_value
@@ -874,13 +888,16 @@ def logistic_error(d, error, midpoint = 175, steepness = 0.05):
     # Uses math.exp instead of np.exp
     return error / (1 + math.exp(steepness * (d - midpoint)))
 
+LAST_VALID_LEFT_DISTANCE = -1
 def get_left_distance(rotation):
-    global previous_left_distance
+    global previous_left_distance, LAST_VALID_LEFT_DISTANCE
 
-    if not filter_distance_by_angle(rotation, 5):
+    if not filter_distance_by_angle(rotation, 1):
+        # LAST_VALID_LEFT_DISTANCE = -1
         return None
 
     if ENABLE_LOCATION_FILTER and not filter_distance_by_location(ELEFT, X, Y, rotation):
+        # LAST_VALID_LEFT_DISTANCE = -1
         return None
 
     loader_offset = 0
@@ -891,7 +908,9 @@ def get_left_distance(rotation):
     new_left_timestamp = left_distance.timestamp()
 
     if new_left_timestamp > previous_left_distance[1]:
-        if not left_distance.is_object_detected(): return None
+        if not left_distance.is_object_detected():
+            # LAST_VALID_LEFT_DISTANCE = -1
+            return None
         new_left_distance_value = left_distance.object_distance(MM)
         try:
             error = logistic_error(new_left_distance_value, LEFT_DISTANCE_CLOSE_ERROR)
@@ -904,20 +923,25 @@ def get_left_distance(rotation):
         previous_left_distance[1] = new_left_distance_timestamp
 
         if new_left_distance_value > 1700.0:
+            # LAST_VALID_LEFT_DISTANCE = -1
             return None
 
         # print(new_left_distance_value)
+        LAST_VALID_LEFT_DISTANCE = new_left_distance_value
         return new_left_distance_value + loader_offset
 
     return None
 
+LAST_VALID_RIGHT_DISTANCE = -1
 def get_right_distance(rotation):
-    global previous_right_distance
+    global previous_right_distance, LAST_VALID_RIGHT_DISTANCE
 
-    if not filter_distance_by_angle(rotation, 5):
+    if not filter_distance_by_angle(rotation, 1):
+        # LAST_VALID_RIGHT_DISTANCE = -1
         return None
 
     if ENABLE_LOCATION_FILTER and not filter_distance_by_location(ERIGHT, X, Y, rotation):
+        # LAST_VALID_RIGHT_DISTANCE = -1
         return None
 
     loader_offset = 0
@@ -928,7 +952,9 @@ def get_right_distance(rotation):
     new_right_timestamp = right_distance.timestamp()
 
     if new_right_timestamp > previous_right_distance[1]:
-        if not right_distance.is_object_detected(): return None
+        if not right_distance.is_object_detected():
+            # LAST_VALID_RIGHT_DISTANCE = -1
+            return None
         new_right_distance_value = right_distance.object_distance(MM)
         if new_right_distance_value < RIGHT_DISTANCE_CLOSE_TRANSITION:
             # Close region just subtract the close value
@@ -943,9 +969,11 @@ def get_right_distance(rotation):
         previous_right_distance[1] = new_right_distance_timestamp
 
         if new_right_distance_value > 1700.0:
+            # LAST_VALID_RIGHT_DISTANCE = -1
             return None
 
         # print(new_right_distance_value)
+        LAST_VALID_RIGHT_DISTANCE = new_right_distance_value
         return new_right_distance_value + loader_offset
 
     return None
@@ -1550,7 +1578,8 @@ def autonomous_skills_turn_and_stack():
     while not BACKGROUND_LIFT_THREAD_DONE:
         wait(50, MSEC)
     # wait(500, MSEC)
-    lift.command(18)
+    lift.command(17)
+    wait(250, MSEC)
     claw.open()
     wait(250, MSEC)
     dt.drive_to_xy(850, 2400, False, 40, heading = 180)
@@ -1692,17 +1721,18 @@ def fast_toggle():
     spin_motors(-turns)
 
 # Score 7 pins, 3 goals with 2 pins
-def autonomous_left():
+def autonomous_left(as_skills = False):
     # place automonous code here
 
-    log = Logger(brain,
-            [left_front_motor, left_back_motor, right_front_motor, right_back_motor] + [inertial, rotation_fwd, rotation_side],
-            ["lfm", "lbm", "rfm", "rbm", "gyro", "fwd", "side"], False,
-            ["y", "x", "b1", "b2", "l", "r"], OnLoggerPositionCallbackDist,
-            time_sec = 15, rate_ms = 20,
-            auto_dump = True, file_name = "aurora_left"
-            )
-    log.start()
+    if not as_skills:
+        log = Logger(brain,
+                [left_front_motor, left_back_motor, right_front_motor, right_back_motor] + [inertial, rotation_fwd, rotation_side],
+                ["lfm", "lbm", "rfm", "rbm", "gyro", "fwd", "side"], False,
+                ["y", "x", "b1", "b2", "l", "r"], OnLoggerPositionCallbackDist,
+                time_sec = 15, rate_ms = 20,
+                auto_dump = True, file_name = "aurora_left"
+                )
+        log.start()
 
     print("--- Toggle")
     Toggle.lower_toggle()
@@ -1777,6 +1807,15 @@ def autonomous_left():
 def autonomous_right():
     # place automonous code here
 
+    log = Logger(brain,
+            [left_front_motor, left_back_motor, right_front_motor, right_back_motor] + [inertial, rotation_fwd, rotation_side],
+            ["lfm", "lbm", "rfm", "rbm", "gyro", "fwd", "side"], False,
+            ["y", "x", "b1", "b2", "l", "r"], OnLoggerPositionCallbackDist,
+            time_sec = 15, rate_ms = 20,
+            auto_dump = True, file_name = "aurora_right"
+            )
+    log.start()
+    
     odom_print()
     
     print("--- Toggle")
@@ -1855,7 +1894,7 @@ def autonomous_right():
     dt.turn_for(-90, 100)
 
 def OnLoggerPositionCallbackDist():
-    return Y, X, back_distance1.object_distance(MM), back_distance2.object_distance(MM), left_distance.object_distance(MM), right_distance.object_distance(MM)
+    return Y, X, LAST_VALID_BACK_DISTANCE1, LAST_VALID_BACK_DISTANCE2, LAST_VALID_LEFT_DISTANCE, LAST_VALID_RIGHT_DISTANCE
 
 def autonomous_skills():
     log = Logger(brain,
@@ -1868,7 +1907,7 @@ def autonomous_skills():
     log.start()
 
     # 15 seconds
-    autonomous_left()
+    autonomous_left(as_skills=True)
     failed = autonomous_skills_cup_from_floor()
     if failed:
         print("Failed to pick up cup from floor.")
