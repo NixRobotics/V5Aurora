@@ -135,7 +135,7 @@ class XDriveTrain():
         if not self.quiet_mode:
             print("turn_for: x={}, y={}, heading={}, time={}, timeout={}, settle={}".format(self.X, self.Y, self.THETA, loop_count * 10, is_timeout, is_settle))
 
-        return is_timeout, is_settle
+        return is_timeout, is_settle, loop_count * 10
 
     def turn_to(self, target_heading, speed=66, timeout=10000, turn_kp=6.0, settle_error=1.0):
         if target_heading >= 360 or target_heading < 0:
@@ -275,7 +275,7 @@ class XDriveTrain():
             print("drive_for: LF: {}, LB: {}, RF: {}, RB: {}".format(left_front_position, left_back_position, right_front_position, right_back_position))
             print("drive_for: x={}, y={}, heading={}, time={}, timeout={}, settle={}".format(self.X, self.Y, self.THETA, loop_count * 10, is_timeout, is_settle))
 
-        return is_timeout, is_settle
+        return is_timeout, is_settle, loop_count * 10
 
     def drive_to_xy(self, target_x, target_y, strafe=False, speed=100, heading=None, timeout=10000,
                     major_kp=50.0, major_kd=256.0, minor_kp=25.0, minor_kd=0.0, turn_kp=550.0,
@@ -298,7 +298,7 @@ class XDriveTrain():
         settle_error (float): Acceptable error in mm for considering the target as settled.
 
         Returns:
-        (bool, bool): Tuple indicating if timeout occurred and if the target was settled.
+        (bool, bool, float): Tuple indicating if timeout occurred, if the target was settled, and the elapsed time in milliseconds.
         '''
 
         self.set_location(*self.location_callback())
@@ -328,7 +328,7 @@ class XDriveTrain():
             self.stop_all(BRAKE)
             if not self.quiet_mode:
                     print("drive_to_xy: x={}, y={}, heading={}, time={}, timeout={}, settle={}".format(self.X, self.Y, self.THETA, 0, False, False))
-            return False, True
+            return False, True, 0
         
         # normalize the path vector to unit length
         path_x /= path_length
@@ -451,4 +451,4 @@ class XDriveTrain():
             self.set_location(*self.location_callback())
             print("drive_to_xy: x={}, y={}, heading={}, time={}, timeout={}, settle={}".format(self.X, self.Y, self.THETA, loop_count * 10, is_timeout, is_settle))
 
-        return is_timeout, is_settle
+        return is_timeout, is_settle, loop_count * 10
