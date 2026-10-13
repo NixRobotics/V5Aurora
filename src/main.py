@@ -24,7 +24,7 @@
 
 # Library imports
 from vex import *
-from v5pythonlibrary import * # Loaded from SDCard
+from v5pythonlibrary import * # Loaded from SDCard, see https://github.com/NixRobotics/V5PythonFramework
 from robotconfiguration import RobotConfiguration
 from xdrivetrain import XDriveTrain
 from math import radians, degrees, cos, asin, sin, sqrt, pi
@@ -55,7 +55,7 @@ AUTON_SEQUENCE = AutonSequence.SKILLS
 ### DECLARE DEVICES
 # ------------------------------------------------------------ #
 
-BEETLE = False
+BEETLE = True
 
 brain=Brain()
 
@@ -467,7 +467,9 @@ class Arm:
         if self.cancel_operation:
             self.cancel_operation = False
             self.was_cancelled = True
-        self.position = claw_target_position
+            self.position = self.CLAW_ARM_UNKNOWN
+        else:
+            self.position = claw_target_position
         ending_position = (self.motor1.position(DEGREES), self.motor2.position(DEGREES))
         print("Claw from {} to {}, {}ms".format(starting_position, ending_position, count * 10))
 
@@ -1130,6 +1132,7 @@ def odom_thread():
 
         if count % 200 == 0:
             odom_print()
+            print("{\"x\":1000.0,\"y\":0.0,\"h\":0.0,\"m\":{\"left_drive\":35.0,\"right_drive\":41.0}}")
 
         count += 1
 
@@ -1611,7 +1614,7 @@ def autonomous_skills_cup_from_floor2():
         print("no cup detected")
         return True
     
-    dt.drive_for(distance - 30, False, 33, heading = 180)
+    dt.drive_for(distance - 30, False, 25, heading = 180)
     claw.close()
 
     if claw_distance.is_object_detected():
@@ -2071,8 +2074,6 @@ def OnRaiseClawPressed(): # L1
     if not ROBOT_ENABLED: return
     if arm.is_running():
         print("Was Running")
-        #claw_arm_motor1.stop(HOLD)
-        #claw_arm_motor2.stop(HOLD)
         arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_CANCEL)
         return
 
