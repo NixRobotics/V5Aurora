@@ -1688,15 +1688,25 @@ def autonomous_skills_pick_pin():
 def autonomous_skills_to_park():
     print("--- Autonomous Skills to Park ---")
     dt.turn_to(0, 85)
+    odom_print()
     odom_distance_enable(False, False, True)
-    dt.drive_to_xy(900.0, 2100, True, 75, heading = 0)
+    current_heading = inertial.rotation()
+    print("Current heading: {}".format(current_heading))
+    if current_heading >0:
+        current_heading = int((current_heading / 360.0) + 0.5) * 360.0
+    else:
+        current_heading = int((current_heading / 360.0) - 0.5) * 360.0
+    print("Rounding heading: {}".format(current_heading))
+    dt.drive_to_xy(900.0, 2100, True, 75, heading = current_heading)
+    odom_print()
     odom_distance_enable(True, False, False)
-    dt.drive_to_xy(1500, 2100, False, 75, heading = 0)
+    dt.drive_to_xy(1500, 2100, False, 75, heading = current_heading)
+    odom_print()
     odom_distance_enable(False, False, True)
-    dt.drive_to_xy(1500, 1800, True, 75, heading = 0)
-    
+    dt.drive_to_xy(1500, 1800, True, 75, heading = current_heading)
+
     lift.command(13)
-    dt.drive_for(11 * 25.4, False, 50, timeout = 5000, heading = 0)
+    dt.drive_for(11 * 25.4, False, 50, timeout = 5000, heading = current_heading)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID2)
     lift.command(10)
     wait(500, MSEC)
@@ -1937,7 +1947,7 @@ def autonomous_skills():
                 [left_front_motor, left_back_motor, right_front_motor, right_back_motor] + [inertial, rotation_fwd, rotation_side],
                 ["lfm", "lbm", "rfm", "rbm", "gyro", "fwd", "side"], False,
                 ["y", "x", "b1", "b2", "l", "r"], OnLoggerPositionCallbackDist,
-                time_sec = 45, rate_ms = 20,
+                time_sec = 60 , rate_ms = 20,
                 auto_dump = True, file_name = "aurora_skills"
                 )
     log.start()
