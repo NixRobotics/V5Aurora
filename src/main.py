@@ -45,9 +45,9 @@ CALIBRATION = 99
 ALLIANCE_COLOR = AllianceColor.RED
 # ALLIANCE_COLOR = AllianceColor.BLUE
 
-# AUTON_SEQUENCE = AutonSequence.SKILLS
+AUTON_SEQUENCE = AutonSequence.SKILLS
 # AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
-AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
+# AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
 # AUTON_SEQUENCE = AutonSequence.MATCH_NONE
 # AUTON_SEQUENCE = CALIBRATION
 
@@ -1808,8 +1808,10 @@ def autonomous_left(as_skills = False):
     dt.drive_to_xy(310, 2400, True, 66, heading = 0, timeout = 500)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     lift.command(0)
+    odom_print()
 
     print("--- Rotate to wall")
+    odom_print()
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 180
@@ -1825,6 +1827,7 @@ def autonomous_left(as_skills = False):
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
 
     print("--- Rotate to goal")
+    odom_print()
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 0
@@ -1834,6 +1837,7 @@ def autonomous_left(as_skills = False):
     lift.command(11.5)
 
     print("--- Approach scoring position")
+    odom_print()
     dt.drive_for(165, False, 50, heading = 0, timeout = 1000)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     wait(250, MSEC)
@@ -1917,6 +1921,7 @@ def autonomous_right():
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 0
+    odom_distance_enable(False, False, False)
     dt.turn_for(target_heading - current_heading, 85, timeout = 1000)
     odom_distance_enable(True, False, False)
     lift.command(11.5)
