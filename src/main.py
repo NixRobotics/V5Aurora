@@ -42,12 +42,12 @@ except ImportError:
 
 CALIBRATION = 99
 
-ALLIANCE_COLOR = AllianceColor.RED
-# ALLIANCE_COLOR = AllianceColor.BLUE
+# ALLIANCE_COLOR = AllianceColor.RED
+ALLIANCE_COLOR = AllianceColor.BLUE
 
-AUTON_SEQUENCE = AutonSequence.SKILLS
+# AUTON_SEQUENCE = AutonSequence.SKILLS
 # AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
-# AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
+AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
 # AUTON_SEQUENCE = AutonSequence.MATCH_NONE
 # AUTON_SEQUENCE = CALIBRATION
 
@@ -1076,7 +1076,6 @@ def odom_thread():
     initialize_wheels()
     initialize_rotation()
     initialize_distances()
-    wait(100, MSEC)
     filter = KalmanXY(X, Y)
 
     count = 0
@@ -1539,8 +1538,8 @@ def autonomous_skills_cup_from_floor():
     print("--- Drive To Y=1800")
     dt.drive_to_xy(900.0, 2100.0, False, 66, heading = 0)
     odom_distance_enable(False, False, True)
-    dt.drive_to_xy(900.0, 2400.0, True, 66, heading = 0)
-    dt.drive_to_xy(900.0, 2400.0, True, 66, heading = 0)
+    dt.drive_to_xy(900.0, 2390.0, True, 66, heading = 0)
+    dt.drive_to_xy(900.0, 2390.0, True, 66, heading = 0)
     odom_distance_enable(True, False, True)
     #odom_print()
     #wait(500, MSEC)
@@ -1556,6 +1555,7 @@ def autonomous_skills_cup_from_floor():
         return True
     
     dt.drive_for(distance - 30, False, 25, heading = 0)
+    # dt.drive_to_xy(X + distance - 35, Y, False, 25, heading = 0)
     claw.close()
 
     if claw_distance.is_object_detected():
@@ -1613,6 +1613,11 @@ def autonomous_skills_turn_and_stack():
         return True
     Thread(background_lift_thread, (0, Arm.CLAW_ARM_DOWN))
     dt.drive_to_xy(900, 2400, False, 50, heading = 180)
+    current_heading = inertial.rotation()
+    print("Current heading: {}".format(current_heading))
+    target_heading = 180
+    # dt.turn_for(target_heading - current_heading, 66)
+    dt.turn_to(target_heading, 66)
 
     return False
 
@@ -1620,6 +1625,11 @@ def autonomous_skills_cup_from_floor2():
     print("--- Autonomous Skills Pick Pin from Floor2 ---")
     claw.open()
     dt.drive_to_xy(900.0, 3000, True, 66, heading = 180)
+    current_heading = inertial.rotation()
+    print("Current heading: {}".format(current_heading))
+    target_heading = 180
+    # dt.turn_for(target_heading - current_heading, 66)
+    dt.turn_to(target_heading, 66)
     dt.drive_to_xy(900.0, 3000, True, 66, heading = 180)
 
     if claw_distance.is_object_detected():
@@ -1703,17 +1713,35 @@ def autonomous_skills_to_park():
     odom_distance_enable(True, False, False)
     dt.drive_to_xy(1500, 2100, False, 75, heading = current_heading)
     odom_print()
-    odom_distance_enable(False, False, True)
-    dt.drive_to_xy(1500, 1800, True, 75, heading = current_heading)
+    odom_distance_enable(False, False, False)
+    dt.turn_for(-45, 75)
 
     lift.command(13)
-    dt.drive_to_xy(1800-190,1800, False, 33, timeout = 2000, heading = current_heading)
-    # dt.drive_for(11 * 25.4, False, 50, timeout = 5000, heading = current_heading)
-    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID2)
+    dt.drive_for(350, False, 33, timeout = 2000)
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID1)
     lift.command(10)
     wait(500, MSEC)
     claw.open()
-    dt.drive_for(-150, False, 50, heading = current_heading)
+    dt.drive_for(-150, False, 50)
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
+
+def autonomous_skills_to_park_temp():
+    print("--- Autonomous Skills to Park Temp ---")
+    odom_print()
+    odom_distance_enable(True, False, False)
+    dt.drive_to_xy(1500, 2100, False, 75, heading = 0)
+    odom_print()
+    odom_distance_enable(False, False, False)
+    dt.turn_for(-45, 75)
+
+    lift.command(13)
+    dt.drive_for(350, False, 33, timeout = 2000)
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID1)
+    lift.command(10)
+    wait(500, MSEC)
+    claw.open()
+    dt.drive_for(-150, False, 50)
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
 
 
 def autonomous_none():
@@ -1884,18 +1912,18 @@ def autonomous_right():
     print("--- Move 1")
     dt.drive_to_xy(305, 1800, False, 66, heading = 0, timeout = 1000)
     odom_print()
-    dt.drive_to_xy(305, 1190, True, 66, heading = 0, timeout = 2000)
+    dt.drive_to_xy(305, 1185, True, 66, heading = 0, timeout = 2000)
     odom_print()
 
     print("--- Place Pin")
-    # dt.drive_for(170, False, 50, heading = 0)
-    dt.drive_to_xy(305+170, 1190, False, 50, heading = 0, timeout = 1000)
+    dt.drive_for(170, False, 33, heading = 0)
+    # dt.drive_to_xy(305+170, 1190, False, 50, heading = 0, timeout = 1000)
     claw_move10()
     claw.open()
 
     print("--- Reverse and recenter")
-    dt.drive_to_xy(310, 1190, False, 66, heading = 0, timeout = 1000)
-    dt.drive_to_xy(310, 1190, True, 66, heading = 0, timeout = 500)
+    dt.drive_to_xy(310, 1200, False, 66, heading = 0, timeout = 1000)
+    dt.drive_to_xy(310, 1200, True, 66, heading = 0, timeout = 500)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     lift.command(0)
     odom_print()
@@ -1959,6 +1987,9 @@ def autonomous_skills():
                 )
     log.start()
 
+    # autonomous_skills_to_park_temp()
+    # return
+
     # 15 seconds
     autonomous_left(as_skills=True)
     failed = autonomous_skills_cup_from_floor()
@@ -2003,8 +2034,6 @@ def autonomous():
     else:
         autonomous_none()
 
-pitch_offset = 0.0
-
 CONNECTION_CHECKER_MUTE = False
 def connection_checker():
     while True:
@@ -2036,7 +2065,6 @@ def connection_checker_mute(mute):
 def pre_autonomous():
     global ROBOT_INITIALIZED
     global ALLIANCE_COLOR, AUTON_SEQUENCE
-    global pitch_offset
     global motor_monitor
     # actions to do when the program starts
     brain.screen.clear_screen()
@@ -2047,12 +2075,6 @@ def pre_autonomous():
         wait(100, MSEC)
 
     Thread(connection_checker)
-
-    for i in range(10):
-        pitch_offset += inertial.orientation(OrientationType.ROLL, DEGREES)
-        wait(10, MSEC)
-    pitch_offset /= 10.0
-    print("Pitch offset: {:.1f}".format(pitch_offset))
 
     ROBOT_INITIALIZED = True
 
