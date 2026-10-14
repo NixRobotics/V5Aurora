@@ -1,5 +1,3 @@
-from turtle import heading
-
 from vex import *
 from v5pythonlibrary import InertialWrapper
 from math import radians, degrees, cos, asin, sin, sqrt, pi
