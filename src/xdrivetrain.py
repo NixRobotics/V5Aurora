@@ -164,7 +164,10 @@ class XDriveTrain():
         starting_right_back_position = self.rbm.position(TURNS)
 
         # save starting rotation
-        target_rotation = self.gyro.calc_rotation_at_heading(heading)
+        if heading is None:
+            target_rotation = self.gyro.rotation()
+        else:
+            target_rotation = self.gyro.calc_rotation_at_heading(heading)
 
         if not self.quiet_mode:
             print("LF: {}, LB: {}, RF: {}, RB: {}".format(starting_left_front_position, starting_left_back_position, starting_right_front_position, starting_right_back_position))
@@ -337,7 +340,10 @@ class XDriveTrain():
         normal_y = path_x
 
         # save starting rotation
-        target_rotation = self.gyro.calc_rotation_at_heading(heading)
+        if heading is None:
+            target_rotation = self.gyro.rotation()
+        else:
+            target_rotation = self.gyro.calc_rotation_at_heading(heading)
 
         # loop control variables
         done = False
