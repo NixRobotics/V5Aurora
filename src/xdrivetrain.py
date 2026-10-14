@@ -142,9 +142,9 @@ class XDriveTrain():
     def turn_to(self, target_heading, speed=66, timeout=10000, turn_kp=6.0, settle_error=1.0):
         if target_heading >= 360 or target_heading < 0:
             raise ValueError("Target heading must be between 0 and 359 degrees")
-        target_angle = target_heading - 360 if target_heading >= 180 else target_heading
-        current_angle = self.gyro.angle()
-        turn_degrees = target_angle - current_angle
+        target_rotation = self.gyro.calc_rotation_at_heading(target_heading)
+        current_rotation = self.gyro.rotation()
+        turn_degrees = target_rotation - current_rotation
         return self.turn_for(turn_degrees, speed=speed, timeout=timeout, turn_kp=turn_kp, settle_error=settle_error)
 
     def drive_for(self, distance, strafe=False, speed=100, heading=None, timeout=10000, drive_kp=50.0, turn_kp=500.0, settle_error=10.0): # distance is in mm, speed is in percent
