@@ -45,9 +45,9 @@ CALIBRATION = 99
 ALLIANCE_COLOR = AllianceColor.RED
 # ALLIANCE_COLOR = AllianceColor.BLUE
 
-AUTON_SEQUENCE = AutonSequence.SKILLS
+# AUTON_SEQUENCE = AutonSequence.SKILLS
 # AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
-# AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
+AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
 # AUTON_SEQUENCE = AutonSequence.MATCH_NONE
 # AUTON_SEQUENCE = CALIBRATION
 
@@ -1076,6 +1076,7 @@ def odom_thread():
     initialize_wheels()
     initialize_rotation()
     initialize_distances()
+    wait(100, MSEC)
     filter = KalmanXY(X, Y)
 
     count = 0
@@ -1879,18 +1880,18 @@ def autonomous_right():
     print("--- Move 1")
     dt.drive_to_xy(305, 1800, False, 66, heading = 0, timeout = 1000)
     odom_print()
-    dt.drive_to_xy(305, 1200, True, 66, heading = 0, timeout = 2000)
+    dt.drive_to_xy(305, 1190, True, 66, heading = 0, timeout = 2000)
     odom_print()
 
     print("--- Place Pin")
     # dt.drive_for(170, False, 50, heading = 0)
-    dt.drive_to_xy(305+170, 1200, False, 50, heading = 0, timeout = 1000)
+    dt.drive_to_xy(305+170, 1190, False, 50, heading = 0, timeout = 1000)
     claw_move10()
     claw.open()
 
     print("--- Reverse and recenter")
-    dt.drive_to_xy(310, 1200, False, 66, heading = 0, timeout = 1000)
-    dt.drive_to_xy(310, 1200, True, 66, heading = 0, timeout = 500)
+    dt.drive_to_xy(310, 1190, False, 66, heading = 0, timeout = 1000)
+    dt.drive_to_xy(310, 1190, True, 66, heading = 0, timeout = 500)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     lift.command(0)
     odom_print()
