@@ -1,46 +1,204 @@
+
+MicroPython v1.13-384-gdf17e97c0-dirty on 2024-08-02; Vex V5 with Zynq (v0.2)
+Type "help()" for more information.
+>>> Failed to import DriveMotionModel
+loading settings
+settings loaded: {'slow_ramp': False, 'auto_claw_mid1': False, 'heading_hold': True, 'motion_model': False, 'field_orient': False, 'auto_claw_down': False}
+heading_hold: True
+field_orient: False
+slow_ramp: False
+auto_claw_down: False
+auto_claw_mid1: False
+motion_model: False
+Pitch offset: -0.4
+X:    0/1.0, Y: 1800/1.0, H: 359.99, B: 62/65, L: 1627, R: 1618
+X:  186/0.2, Y: 1812/0.2, H: 359.97, B: 62/65, L: 1624, R: 1619
 --- Toggle
-X:  192/0.2, Y: 1809/0.2, H: 0.07, B: 65/67, L: 1618, R: 1617
-drive_for: x=0, y=0, heading=0, time=530, timeout=False, settle=True
-drive_for: x=0, y=0, heading=0, time=600, timeout=False, settle=True
-drive_for: x=0, y=0, heading=0, time=550, timeout=False, settle=True
+Logger: Logging started
+Target revolutions: 0.40 0.00
+LF: 0.0, LB: 0.0, RF: 0.0, RB: 0.0
+X:  187/0.2, Y: 1812/0.2, H: 0.12, B: 63/65, L: 1625, R: 1617
+drive_for: LF: 0.4533333, LB: 0.4233334, RF: 0.5066667, RB: 0.46
+drive_for: x=0, y=0, heading=0, time=540, timeout=False, settle=True
+Target revolutions: -0.47 0.00
+LF: 0.4533333, LB: 0.4233334, RF: 0.5066667, RB: 0.46
+drive_for: LF: -0.01333333, LB: -0.07333333, RF: 0.03333333, RB: -0.06333333
 drive_for: x=0, y=0, heading=0, time=590, timeout=False, settle=True
+Target revolutions: 0.40 0.00
+LF: -0.01333333, LB: -0.07333333, RF: 0.03333333, RB: -0.06333333
+drive_for: LF: 0.4166667, LB: 0.34, RF: 0.48, RB: 0.3766667
+drive_for: x=0, y=0, heading=0, time=540, timeout=False, settle=True
+Target revolutions: -0.47 0.00
+LF: 0.4166667, LB: 0.34, RF: 0.48, RB: 0.3766667
+X:  206/0.2, Y: 1814/0.2, H: 0.07, B: 93/88, L: 1626, R: 1620
+drive_for: LF: -0.05333333, LB: -0.1966667, RF: -0.05333333, RB: -0.1033333
+drive_for: x=0, y=0, heading=0, time=580, timeout=False, settle=True
 --- Move 1
-Driving to X: 305, Y: 1800 from X: 200.8762, Y: 1809.525, is_strafe=False
-drive_to_xy: x=308.4899, y=1791.109, heading=-0.1034493, time=930, timeout=False, settle=True
-Driving to X: 305, Y: 2400 from X: 308.4899, Y: 1791.109, is_strafe=True
-drive_to_xy: x=300.0653, y=2397.319, heading=0.2933758, time=1760, timeout=False, settle=True
+Driving to X: 305, Y: 1800 from X: 199.0206, Y: 1813.875, is_strafe=False
+Lift up from 0.0 to 334.4, total 5.573333 links
+drive_to_xy: x=307.1413, y=1791.233, heading=-0.4451155, time=960, timeout=False, settle=True
+X:  307/0.2, Y: 1791/0.3, H: 359.55, B: 181/190, L: 1620, R: 1628
+Driving to X: 305, Y: 2400 from X: 307.1413, Y: 1791.233, is_strafe=True
+X:  317/0.2, Y: 2267/0.3, H: 358.36, B: 192/198, L: 2053, R: 1199
+drive_to_xy: x=302.4129, y=2397.654, heading=-0.3927074, time=1700, timeout=False, settle=True
+X:  302/0.2, Y: 2398/0.3, H: 359.61, B: 175/179, L: 2237, R: 1008
 --- Place Pin
-drive_for: x=300.0653, y=2397.319, heading=0.2933758, time=740, timeout=False, settle=True
+Target revolutions: 1.14 0.00
+LF: 5.256667, LB: -4.09, RF: -4.046667, RB: 5.033333
+drive_for: LF: 6.28, LB: -2.94, RF: -2.833333, RB: 6.226666
+drive_for: x=302.4129, y=2397.654, heading=-0.3927074, time=740, timeout=False, settle=True
+Pin distance: 45.0
+Pin compensation: 3.333333
+Claw from (2.4, 0.8) to (44.4, 46.4), 180ms
+Lift up from 332.0 to 173.2, total -2.646667 links
 --- Reverse and recenter
-Driving to X: 310, Y: 2400 from X: 413.9445, Y: 2399.041, is_strafe=False
-drive_to_xy: x=311.3666, y=2401.986, heading=-0.1891204, time=850, timeout=False, settle=True
-Driving to X: 310, Y: 2400 from X: 311.3666, Y: 2401.986, is_strafe=True
-drive_to_xy: x=311.3666, y=2401.986, heading=-0.1891204, time=0, timeout=False, settle=False
+Driving to X: 310, Y: 2400 from X: 411.3737, Y: 2401.116, is_strafe=False
+X:  411/0.2, Y: 2401/1.0, H: 358.92, B: 289/292, L: 2251, R: 1002
+drive_to_xy: x=310.653, y=2401.445, heading=-0.2436325, time=840, timeout=False, settle=True
+Driving to X: 310, Y: 2400 from X: 310.653, Y: 2401.445, is_strafe=True
+drive_to_xy: x=310.653, y=2401.445, heading=-0.2436325, time=0, timeout=False, settle=False
+Claw from (44.4, 46.4) to (0.0, 0.8), 190ms
+Lift up from 171.2 to 0.0, total -2.853333 links
 --- Rotate to wall
-turn_for: x=311.3666, y=2401.986, heading=-0.1891204, time=880, timeout=False, settle=True
+Current heading: -0.3669465
+X:  396/1.1, Y: 2351/1.1, H: 183.71, B: 9999/791, L: 1016, R: 2257
+turn_for: x=310.653, y=2401.445, heading=-0.2436325, time=1020, timeout=True, settle=False
 --- Capture Cup
+Claw from (2.4, 0.8) to (102.8, 102.0), 330ms
+Lift up from -0.8 to 300.8, total 5.026666 links
+Claw from (102.8, 103.6) to (0.0, 1.6), 300ms
 --- Rotate to goal
-Current heading: 179.894
-X:  308/3.2, Y: 2377/1.0, H: 357.53, B: 220/170, L: 2238, R: 1026
-turn_for: x=311.3666, y=2401.986, heading=-0.1891204, time=1350, timeout=False, settle=True
+Current heading: 181.4209
+X:  385/3.1, Y: 2355/3.1, H: 62.52, B: 1959/299, L: 9999, R: 126
+turn_for: x=310.653, y=2401.445, heading=-0.2436325, time=970, timeout=False, settle=True
+Lift up from 300.0 to 690.0, total 6.5 links
 --- Approach scoring position
-drive_for: x=311.3666, y=2401.986, heading=-0.1891204, time=730, timeout=False, settle=True
+Target revolutions: 1.11 0.00
+LF: 5.673333, LB: -3.673333, RF: -3.523333, RB: 5.36
+drive_for: LF: 6.57, LB: -2.593333, RF: -2.29, RB: 6.553333
+drive_for: x=310.653, y=2401.445, heading=-0.2436325, time=730, timeout=False, settle=True
 --- Score Cup
-Lift up from 691.5999 to 532.8, total -2.646667 links
+X:  410/0.2, Y: 2402/0.8, H: 358.43, B: 285/291, L: 2252, R: 998
+Lift up from 689.2 to 533.2, total -2.6 links
 --- Reverse and prepare for next move
-Driving to X: 310, Y: 2400 from X: 408.472, Y: 2375.041, is_strafe=False
-drive_to_xy: x=310.0959, y=2406.157, heading=0.5089322, time=880, timeout=False, settle=True
-Driving to X: 310, Y: 2100 from X: 310.0959, Y: 2406.157, is_strafe=True
-X:  311/0.2, Y: 2334/1.0, H: 0.55, B: 190/188, L: 2186, R: 1070
-{"x":1000.0,"y":0.0,"h":0.0,"m":{"left_drive":35.0,"right_drive":41.0}}
-Lift up from 530.0 to -1.2, total -8.853333 links
+Driving to X: 310, Y: 2400 from X: 411.1719, Y: 2402.392, is_strafe=False
+drive_to_xy: x=312.3496, y=2397.283, heading=-0.2093705, time=920, timeout=False, settle=True
+Driving to X: 310, Y: 2100 from X: 312.3496, Y: 2397.283, is_strafe=True
+Lift up from 530.4 to -2.0, total -8.873334 links
+X:  318/0.2, Y: 2225/0.9, H: 0.53, B: 193/190, L: 2071, R: 1178
+drive_to_xy: x=312.945, y=2096.6, heading=-0.4639874, time=930, timeout=False, settle=True
+--- Autonomous Skills Cup from Floor ---
+--- Drive Forward
+--- Drive To Y=1800
+Driving to X: 900.0, Y: 2100.0 from X: 312.945, Y: 2096.6, is_strafe=False
+X:  897/0.2, Y: 2096/2.9, H: 0.09, B: 776/767, L: 1945, R: 1306
+drive_to_xy: x=900.3798, y=2096.711, heading=-0.2518198, time=1730, timeout=False, settle=True
+Driving to X: 900.0, Y: 2400.0 from X: 900.3798, Y: 2096.711, is_strafe=True
+drive_to_xy: x=906.6923, y=2393.033, heading=-0.7256096, time=960, timeout=False, settle=True
+Driving to X: 900.0, Y: 2400.0 from X: 906.6923, Y: 2393.033, is_strafe=True
+drive_to_xy: x=906.6923, y=2393.033, heading=-0.7256096, time=0, timeout=False, settle=False
+cup distance: 183.0
+Target revolutions: 1.03 0.00
+LF: 9.726666, LB: 0.76, RF: 0.7, RB: 9.376667
+drive_for: LF: 10.70333, LB: 1.756667, RF: 1.826667, RB: 10.45
+drive_for: x=906.6923, y=2393.033, heading=-0.7256096, time=770, timeout=False, settle=True
+cup distance: 68.0
+--- Autonomous Skills Turn and Stack ---
+--- Rotate to wall
+X: 1039/0.2, Y: 2403/0.2, H: 359.37, B: 919/915, L: 2255, R: 1003
+Lift up from -5.6 to 116.8, total 2.04 links
+Current heading: -0.6249562
+Lift up from 115.6 to 1210.4, total 18.24667 links
+turn_for: x=906.6923, y=2393.033, heading=-0.7256096, time=1830, timeout=False, settle=True
+Driving to X: 770, Y: 2400 from X: 1032.169, Y: 2397.485, is_strafe=False
+Claw from (2.4, 1.6) to (73.6, 75.6), 220ms
+X: 1032/2.2, Y: 2390/0.3, H: 179.53, B: 2495/2475, L: 1009, R: 2242
+drive_to_xy: x=778.0665, y=2381.49, heading=180.0373, time=1500, timeout=False, settle=True
+Lift up from 1209.6 to 1014.0, total -3.26 links
+X:  778/4.2, Y: 2382/0.3, H: 179.94, B: 9999/9999, L: 1014, R: 2239
+Driving to X: 850, Y: 2400 from X: 778.1091, Y: 2381.401, is_strafe=False
+drive_to_xy: x=856.1902, y=2408.246, heading=179.3746, time=610, timeout=False, settle=True
+cup distance: 82.0
+Driving to X: 900, Y: 2400 from X: 856.1902, Y: 2408.246, is_strafe=False
+drive_to_xy: x=908.4699, y=2399.983, heading=180.0808, time=520, timeout=False, settle=True
+--- Autonomous Skills Pick Pin from Floor2 ---
+Driving to X: 900.0, Y: 3000 from X: 908.4699, Y: 2399.983, is_strafe=True
+Lift up from 1012.0 to 0.4, total -16.86 links
+X:  901/6.2, Y: 2705/0.3, H: 180.13, B: 2602/2597, L: 695, R: 2532
+Claw from (71.2, 77.2) to (0.8, 16.4), 290ms
+drive_to_xy: x=895.616, y=3000.98, heading=180.4887, time=1530, timeout=False, settle=True
+Driving to X: 900.0, Y: 3000 from X: 895.616, Y: 3000.98, is_strafe=True
+drive_to_xy: x=895.616, y=3000.98, heading=180.4887, time=0, timeout=False, settle=False
+cup distance: 193.0
+Target revolutions: 1.09 0.00
+LF: 12.22667, LB: 13.29333, RF: 2.55, RB: 1.293333
+drive_for: LF: 13.24, LB: 14.33, RF: 3.733333, RB: 2.433333
+drive_for: x=895.616, y=3000.98, heading=180.4887, time=800, timeout=False, settle=True
+cup distance: 37.0
+--- Autonomous Skills Turn and Stack2 ---
+Lift up from 1.2 to 179.2, total 2.966667 links
+Driving to X: 900, Y: 3000 from X: 745.4451, Y: 3005.065, is_strafe=False
+X:  745/8.2, Y: 3006/0.3, H: 180.13, B: 9999/9999, L: 391, R: 9999
+drive_to_xy: x=897.7856, y=3001.866, heading=180.1226, time=1190, timeout=False, settle=True
+Driving to X: 900, Y: 2400 from X: 897.7856, Y: 3001.866, is_strafe=True
+X:  900/10.2, Y: 2540/0.3, H: 179.81, B: 9999/762, L: 852, R: 2387
+Lift up from 177.2 to 1624.0, total 24.11334 links
+Claw from (1.6, 22.4) to (70.4, 74.8), 230ms
+drive_to_xy: x=899.8957, y=2405.0, heading=179.622, time=1370, timeout=False, settle=True
+Driving to X: 770, Y: 2400 from X: 899.8957, Y: 2405.0, is_strafe=False
+drive_to_xy: x=776.5731, y=2368.607, heading=172.5923, time=790, timeout=False, settle=True
+Lift up from 1625.6 to 1492.8, total -2.213332 links
+Driving to X: 850, Y: 2400 from X: 776.2278, Y: 2369.827, is_strafe=False
+X:  800/12.2, Y: 2377/0.6, H: 181.42, B: 9999/9999, L: 1028, R: 2229
+drive_to_xy: x=855.2832, y=2403.415, heading=178.6557, time=620, timeout=False, settle=True
+cup distance: 144.0
+Driving to X: 900, Y: 2400 from X: 855.2832, Y: 2403.415, is_strafe=False
+drive_to_xy: x=910.3991, y=2406.804, heading=179.6227, time=520, timeout=False, settle=True
+--- Autonomous Skills Pick Pin ---
+Driving to X: 900.0, Y: 3300 from X: 910.3991, Y: 2406.804, is_strafe=True
+Lift up from 1489.6 to 2.8, total -24.78 links
+X:  898/14.2, Y: 3125/0.3, H: 179.69, B: 2589/2587, L: 265, R: 9999
+Claw from (70.4, 74.0) to (0.8, 17.2), 280ms
+drive_to_xy: x=893.0389, y=3298.834, heading=179.2347, time=1550, timeout=False, settle=True
+Driving to X: 300.0, Y: 3300 from X: 893.0389, Y: 3298.834, is_strafe=False
+drive_to_xy: x=309.4264, y=3300.267, heading=179.986, time=1360, timeout=False, settle=True
+Claw_distance: 148.0
+Target revolutions: 0.52 0.00
+LF: 13.77667, LB: 20.00667, RF: 9.183333, RB: 2.696667
+X:  307/16.2, Y: 3300/0.3, H: 180.66, B: 760/9999, L: 79, R: 9999
+drive_for: LF: 14.32667, LB: 20.55333, RF: 9.786667, RB: 3.273333
+drive_for: x=309.4264, y=3300.267, heading=179.986, time=570, timeout=False, settle=True
+Target revolutions: 0.34 0.00
+LF: 14.32667, LB: 20.55333, RF: 9.786667, RB: 3.273333
+drive_for: LF: 14.67667, LB: 20.91667, RF: 10.2, RB: 3.63
+drive_for: x=309.4264, y=3300.267, heading=179.986, time=530, timeout=False, settle=True
+Lift up from 3.2 to 57.2, total 0.9 links
+Driving to X: 900.0, Y: 3300 from X: 192.0685, Y: 3290.411, is_strafe=False
+X:  698/18.2, Y: 3339/0.3, H: 179.69, B: 376/9999, L: 35, R: 9999
+drive_to_xy: x=907.7215, y=3335.562, heading=181.9869, time=1380, timeout=False, settle=True
+--- Autonomous Skills to Park ---
+turn_for: x=907.7215, y=3335.562, heading=181.9869, time=880, timeout=False, settle=True
+Driving to X: 900.0, Y: 2100 from X: 956.2916, Y: 3332.904, is_strafe=True
+X:  881/3.0, Y: 3182/1.2, H: 212.58, B: 293/719, L: 322, R: 9999
+X:  783/2.6, Y: 2772/3.2, H: 72.14, B: 9999/2417, L: 884, R: 617
+X:  783/4.6, Y: 2772/5.2, H: 72.14, B: 9999/2417, L: 874, R: 616
 Logger: Dumping log data to SD card
-Logger: Writing 736 lines to log file
-drive_to_xy: x=309.0556, y=2102.816, heading=-0.692909, time=940, timeout=False, settle=True
-Logger: Log data saved to aurora_left_0.csv
-X:  312/0.2, Y: 2107/3.0, H: 359.52, B: 186/192, L: 1944, R: 1302
-{"x":1000.0,"y":0.0,"h":0.0,"m":{"left_drive":35.0,"right_drive":41.0}}
-X:  311/0.3, Y: 2107/5.0, H: 359.51, B: 184/193, L: 1940, R: 1300
-{"x":1000.0,"y":0.0,"h":0.0,"m":{"left_drive":35.0,"right_drive":41.0}}
-X:  312/0.3, Y: 2107/7.0, H: 359.51, B: 186/191, L: 1944, R: 1298
-{"x":1000.0,"y":0.0,"h":0.0,"m":{"left_drive":35.0,"right_drive":41.0}}
+Logger: Writing 2179 lines to log file
+X:  783/6.6, Y: 2772/7.2, H: 72.14, B: 9999/2420, L: 881, R: 616
+X:  783/8.6, Y: 2772/9.2, H: 72.15, B: 9999/2417, L: 881, R: 616
+Logger: Log data saved to aurora_skills_0.csv
+X:  783/10.6, Y: 2772/11.2, H: 72.14, B: 9999/2418, L: 878, R: 615
+X:  783/12.6, Y: 2772/13.2, H: 72.14, B: 9999/2419, L: 873, R: 616
+X:  783/14.6, Y: 2772/15.2, H: 72.14, B: 9999/2414, L: 878, R: 616
+X:  783/16.6, Y: 2772/17.2, H: 72.14, B: 9999/2420, L: 876, R: 616
+X:  783/18.6, Y: 2772/19.2, H: 72.15, B: 9999/2414, L: 881, R: 615
+X:  783/20.6, Y: 2772/21.2, H: 72.14, B: 9999/2420, L: 882, R: 616
+X:  783/22.6, Y: 2772/23.2, H: 72.15, B: 9999/2416, L: 876, R: 615
+X:  783/24.6, Y: 2772/25.2, H: 72.15, B: 9999/2419, L: 884, R: 616
+X:  783/26.6, Y: 2772/27.2, H: 72.14, B: 9999/2415, L: 877, R: 616
+X:  783/28.6, Y: 2772/29.2, H: 72.14, B: 9999/2415, L: 877, R: 615
+X:  783/30.6, Y: 2772/31.2, H: 72.14, B: 9999/2420, L: 879, R: 614
+X:  783/32.6, Y: 2772/33.2, H: 72.14, B: 9999/2414, L: 881, R: 616
+X:  783/34.6, Y: 2772/35.2, H: 72.15, B: 9999/2417, L: 881, R: 614
+X:  783/36.6, Y: 2772/37.2, H: 72.14, B: 9999/2420, L: 883, R: 615
+X:  783/38.6, Y: 2772/39.2, H: 72.14, B: 9999/2416, L: 880, R: 615

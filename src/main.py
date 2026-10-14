@@ -1687,7 +1687,22 @@ def autonomous_skills_pick_pin():
 
 def autonomous_skills_to_park():
     print("--- Autonomous Skills to Park ---")
-    dt.drive_to_xy(900.0, 3600-300, False, 66, heading = 180)
+    dt.turn_to(0, 85)
+    odom_distance_enable(False, False, True)
+    dt.drive_to_xy(900.0, 2100, True, 75, heading = 0)
+    odom_distance_enable(True, False, False)
+    dt.drive_to_xy(1500, 2100, False, 75, heading = 0)
+    odom_distance_enable(False, False, True)
+    dt.drive_to_xy(1500, 1800, True, 75, heading = 0)
+    
+    lift.command(13)
+    dt.drive_for(11 * 25.4, False, 50, timeout = 5000, heading = 0)
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID2)
+    lift.command(10)
+    wait(500, MSEC)
+    claw.open()
+    dt.drive_for(-150, False, 50, heading = 0)
+
 
 def autonomous_none():
     # place automonous code here
@@ -1949,6 +1964,8 @@ def autonomous_skills():
     if failed:
         print("Failed to pick pin.")
         return
+    autonomous_skills_to_park()
+
 
 def autonomous():
     global ROBOT_ENABLED
