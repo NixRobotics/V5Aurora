@@ -1,85 +1,46 @@
-MicroPython v1.13-384-gdf17e97c0-dirty on 2024-08-02; Vex V5 with Zynq (v0.2)
-Type "help()" for more information.
->>> loading settings
-settings loaded: {'slow_ramp': False, 'auto_claw_mid1': False, 'heading_hold': True, 'motion_model': True, 'field_orient': False, 'auto_claw_down': False}
-heading_hold: True
-field_orient: False
-slow_ramp: False
-auto_claw_down: False
-auto_claw_mid1: False
-motion_model: True
-Pitch offset: -0.3
-X:    0, Y:    0, H: 359.99
-X:  219, Y: 2755, H: 359.97
-X:  219, Y: 2756, H: 359.96
-back1 83.9 back2 85.7 back distance 84.8 angle -0.2900253
-X:  219, Y: 2755, H: 359.96
-Driving to X: 300.0, Y: 2750.0 from X: 218.8185, Y: 2755.123
-drive_to_xy: x=293.0543, y=2749.66, heading=0.204547, time=860, timeout=False, settle=True
-Driving to X: 300.0, Y: 3150.0 from X: 293.0543, Y: 2749.66
-drive_to_xy: x=286.8592, y=3143.317, heading=-1.61928, time=1070, timeout=False, settle=True
-Driving to X: 500.0, Y: 3150.0 from X: 286.8592, Y: 3143.317
-X:  285, Y: 3141, H: 358.50
-drive_to_xy: x=500.6455, y=3149.199, heading=-0.1459755, time=1010, timeout=False, settle=True
-Driving to X: 500.0, Y: 2350.0 from X: 500.6455, Y: 3149.199
-X:  484, Y: 2634, H: 359.10
-drive_to_xy: x=496.4085, y=2354.757, heading=1.16529, time=1580, timeout=False, settle=True
-Driving to X: 400.0, Y: 2350.0 from X: 496.4085, Y: 2354.757
-drive_to_xy: x=403.1489, y=2354.591, heading=-0.05032733, time=880, timeout=False, settle=True
-X:  398, Y: 2360, H: 259.28
-turn_for: x=396.4236, y=2360.177, heading=-90.05086, time=1120, timeout=False, settle=True
-Driving to X: 400.0, Y: 3150.0 from X: 396.4236, Y: 2360.177
-X:  407, Y: 3163, H: 271.99
-drive_to_xy: x=397.828, y=3145.989, heading=-90.10882, time=1730, timeout=False, settle=True
-Driving to X: 400.0, Y: 2350.0 from X: 397.828, Y: 3145.989
-X:  382, Y: 2355, H: 268.24
-drive_to_xy: x=385.0576, y=2357.403, heading=-91.46125, time=1760, timeout=False, settle=True
-turn_for: x=388.6512, y=2351.375, heading=-1.563412, time=1050, timeout=False, settle=True
-Driving to X: 300.0, Y: 2350.0 from X: 388.6512, Y: 2351.375
-drive_to_xy: x=296.6318, y=2337.343, heading=0.2374599, time=540, timeout=False, settle=True
-Driving to X: 300.0, Y: 3150.0 from X: 296.6318, Y: 2337.343
-X:  299, Y: 2367, H: 359.16
-drive_to_xy: x=297.3389, y=3153.365, heading=-1.599068, time=1430, timeout=False, settle=True
-Driving to X: 500.0, Y: 3150.0 from X: 297.3389, Y: 3153.365
-X:  500, Y: 3150, H: 359.95
-drive_to_xy: x=501.0811, y=3149.036, heading=-0.01338207, time=950, timeout=False, settle=True
-Driving to X: 500.0, Y: 2350.0 from X: 501.0811, Y: 3149.036
-drive_to_xy: x=494.9961, y=2359.39, heading=-1.097507, time=1600, timeout=False, settle=True
-Driving to X: 400.0, Y: 2350.0 from X: 494.9961, Y: 2359.39
-X:  467, Y: 2347, H: 1.10
-drive_to_xy: x=390.2417, y=2347.464, heading=-0.2851932, time=630, timeout=False, settle=True
-turn_for: x=383.1939, y=2354.52, heading=-90.32451, time=1110, timeout=False, settle=True
-Driving to X: 400.0, Y: 3150.0 from X: 383.1939, Y: 2354.52
-X:  373, Y: 2461, H: 268.40
-drive_to_xy: x=401.3967, y=3151.862, heading=-89.8939, time=2030, timeout=False, settle=True
-Driving to X: 400.0, Y: 2350.0 from X: 401.3967, Y: 3151.862
-X:  401, Y: 3022, H: 270.16
-drive_to_xy: x=396.8252, y=2358.278, heading=-88.94103, time=1680, timeout=False, settle=True
-X:  396, Y: 2359, H: 359.70
-turn_for: x=396.3991, y=2358.001, heading=0.8173283, time=1080, timeout=False, settle=True
-Driving to X: 300.0, Y: 2350.0 from X: 396.3991, Y: 2358.001
-drive_to_xy: x=300.5075, y=2348.732, heading=-1.415492, time=690, timeout=False, settle=True
-Driving to X: 300.0, Y: 3150.0 from X: 300.5075, Y: 2348.732
-X:  295, Y: 3004, H: 359.14
-drive_to_xy: x=292.6127, y=3158.014, heading=-2.500862, time=1400, timeout=False, settle=True
-Driving to X: 500.0, Y: 3150.0 from X: 292.6127, Y: 3158.014
-drive_to_xy: x=500.5491, y=3150.383, heading=-0.03351976, time=950, timeout=False, settle=True
-Driving to X: 500.0, Y: 2350.0 from X: 500.5491, Y: 3150.383
-X:  500, Y: 2849, H: 0.24
-drive_to_xy: x=497.1816, y=2350.773, heading=0.07497083, time=1880, timeout=False, settle=True
-Driving to X: 400.0, Y: 2350.0 from X: 497.1816, Y: 2350.773
-drive_to_xy: x=401.7392, y=2352.263, heading=0.3841532, time=860, timeout=False, settle=True
-X:  404, Y: 2352, H: 0.60
-turn_for: x=393.0326, y=2359.213, heading=-88.81589, time=950, timeout=False, settle=True
-Driving to X: 400.0, Y: 3150.0 from X: 393.0326, Y: 2359.213
-X:  367, Y: 2857, H: 269.90
-drive_to_xy: x=398.3774, y=3150.602, heading=-89.09514, time=2000, timeout=False, settle=True
-Driving to X: 400.0, Y: 2350.0 from X: 398.3774, Y: 3150.602
-X:  437, Y: 2569, H: 271.99
-drive_to_xy: x=399.2779, y=2357.139, heading=-91.04839, time=1600, timeout=False, settle=True
-turn_for: x=391.1269, y=2366.18, heading=-1.195746, time=1090, timeout=False, settle=True
-Driving to X: 300.0, Y: 2350.0 from X: 391.1269, Y: 2366.18
-X:  354, Y: 2355, H: 1.32
-X:  285, Y: 2336, H: 357.07
-X:  285, Y: 2336, H: 357.06
-X:  285, Y: 2336, H: 357.07
+--- Toggle
+X:  192/0.2, Y: 1809/0.2, H: 0.07, B: 65/67, L: 1618, R: 1617
+drive_for: x=0, y=0, heading=0, time=530, timeout=False, settle=True
+drive_for: x=0, y=0, heading=0, time=600, timeout=False, settle=True
+drive_for: x=0, y=0, heading=0, time=550, timeout=False, settle=True
+drive_for: x=0, y=0, heading=0, time=590, timeout=False, settle=True
+--- Move 1
+Driving to X: 305, Y: 1800 from X: 200.8762, Y: 1809.525, is_strafe=False
+drive_to_xy: x=308.4899, y=1791.109, heading=-0.1034493, time=930, timeout=False, settle=True
+Driving to X: 305, Y: 2400 from X: 308.4899, Y: 1791.109, is_strafe=True
+drive_to_xy: x=300.0653, y=2397.319, heading=0.2933758, time=1760, timeout=False, settle=True
+--- Place Pin
+drive_for: x=300.0653, y=2397.319, heading=0.2933758, time=740, timeout=False, settle=True
+--- Reverse and recenter
+Driving to X: 310, Y: 2400 from X: 413.9445, Y: 2399.041, is_strafe=False
+drive_to_xy: x=311.3666, y=2401.986, heading=-0.1891204, time=850, timeout=False, settle=True
+Driving to X: 310, Y: 2400 from X: 311.3666, Y: 2401.986, is_strafe=True
+drive_to_xy: x=311.3666, y=2401.986, heading=-0.1891204, time=0, timeout=False, settle=False
+--- Rotate to wall
+turn_for: x=311.3666, y=2401.986, heading=-0.1891204, time=880, timeout=False, settle=True
+--- Capture Cup
+--- Rotate to goal
+Current heading: 179.894
+X:  308/3.2, Y: 2377/1.0, H: 357.53, B: 220/170, L: 2238, R: 1026
+turn_for: x=311.3666, y=2401.986, heading=-0.1891204, time=1350, timeout=False, settle=True
+--- Approach scoring position
+drive_for: x=311.3666, y=2401.986, heading=-0.1891204, time=730, timeout=False, settle=True
+--- Score Cup
+Lift up from 691.5999 to 532.8, total -2.646667 links
+--- Reverse and prepare for next move
+Driving to X: 310, Y: 2400 from X: 408.472, Y: 2375.041, is_strafe=False
+drive_to_xy: x=310.0959, y=2406.157, heading=0.5089322, time=880, timeout=False, settle=True
+Driving to X: 310, Y: 2100 from X: 310.0959, Y: 2406.157, is_strafe=True
+X:  311/0.2, Y: 2334/1.0, H: 0.55, B: 190/188, L: 2186, R: 1070
+{"x":1000.0,"y":0.0,"h":0.0,"m":{"left_drive":35.0,"right_drive":41.0}}
+Lift up from 530.0 to -1.2, total -8.853333 links
+Logger: Dumping log data to SD card
+Logger: Writing 736 lines to log file
+drive_to_xy: x=309.0556, y=2102.816, heading=-0.692909, time=940, timeout=False, settle=True
+Logger: Log data saved to aurora_left_0.csv
+X:  312/0.2, Y: 2107/3.0, H: 359.52, B: 186/192, L: 1944, R: 1302
+{"x":1000.0,"y":0.0,"h":0.0,"m":{"left_drive":35.0,"right_drive":41.0}}
+X:  311/0.3, Y: 2107/5.0, H: 359.51, B: 184/193, L: 1940, R: 1300
+{"x":1000.0,"y":0.0,"h":0.0,"m":{"left_drive":35.0,"right_drive":41.0}}
+X:  312/0.3, Y: 2107/7.0, H: 359.51, B: 186/191, L: 1944, R: 1298
+{"x":1000.0,"y":0.0,"h":0.0,"m":{"left_drive":35.0,"right_drive":41.0}}

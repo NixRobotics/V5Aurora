@@ -55,7 +55,7 @@ AUTON_SEQUENCE = AutonSequence.SKILLS
 ### DECLARE DEVICES
 # ------------------------------------------------------------ #
 
-BEETLE = True
+BEETLE = False
 
 brain=Brain()
 
@@ -120,12 +120,12 @@ RIGHT_DISTANCE_FAR_ERROR = 18 # mm (at 1605mm reads 1623mm, at 1205mm reads 1015
 RIGHT_DISTANCE_FAR_TRANSITION = 1600 # mm
 right_distance = Distance(Ports.PORT8)
 
-ROTATION_SIDE_WHEEL_SIZE = 2 * 25.4 * pi # mm circumference
-ROTATION_SIDE_WHEEL_OFFSET = 61.0 # mm (forward)
+ROTATION_SIDE_WHEEL_SIZE = 156 # 2 * 25.4 * pi # mm circumference
+ROTATION_SIDE_WHEEL_OFFSET = 59.6 # 61.0 # mm (forward)
 rotation_side = Rotation(Ports.PORT18, True)
 
-ROTATION_FWD_WHEEL_SIZE = 2 * 25.4 * pi # mm circumference
-ROTATION_FWD_WHEEL_OFFSET = 23.0 # mm (right)
+ROTATION_FWD_WHEEL_SIZE = 156 # 2 * 25.4 * pi # mm circumference
+ROTATION_FWD_WHEEL_OFFSET = 22.5 # 23.0 # mm (right)
 rotation_fwd = Rotation(Ports.PORT20, False)
 
 claw_solenoid = DigitalOut(brain.three_wire_port.a)
@@ -536,7 +536,7 @@ def auto_claw_thread():
 
 X = 0
 Pxx = 1.0
-Y = 0
+Y = 1800
 Pyy = 1.0
 THETA = 0
 
@@ -555,8 +555,8 @@ def set_quiet_mode(quiet):
 ### DISTANCE SENSORS
 
 ENABLE_BACK_DISTANCE = True
-ENABLE_LEFT_DISTANCE = True
-ENABLE_RIGHT_DISTANCE = True
+ENABLE_LEFT_DISTANCE = not (AUTON_SEQUENCE == AutonSequence.MATCH_RIGHT)
+ENABLE_RIGHT_DISTANCE = not (AUTON_SEQUENCE == AutonSequence.MATCH_RIGHT)
 ENABLE_LOCATION_FILTER = False
 FORCE_LOCATION_RESET = True
 
@@ -862,25 +862,38 @@ def get_back_distance(rotation):
     max_timestamp = max(new_back1_timestamp, new_back2_timestamp)
 
     if max_timestamp > previous_back_distance[1]:
-        if not back_distance1.is_object_detected() or not back_distance2.is_object_detected():
+        back1_present = back_distance1.installed()
+        back2_present = back_distance2.installed()
+        back1_detected = back_distance1.is_object_detected()
+        back2_detected = back_distance2.is_object_detected()
+        if not back1_present and not back2_present:
+            # LAST_VALID_BACK_DISTANCE1 = -1
+            # LAST_VALID_BACK_DISTANCE2 = -1
+            return None
+        if (back1_present and not back1_detected) or (back2_present and not back2_detected):
             # LAST_VALID_BACK_DISTANCE1 = -1
             # LAST_VALID_BACK_DISTANCE2 = -1
             return None
         new_back1 = back_distance1.object_distance(MM) - BACK_DISTANCE1_CLOSE_ERROR
         new_back2 = back_distance2.object_distance(MM) - BACK_DISTANCE2_CLOSE_ERROR
-        new_back_distance_value = (new_back1 + new_back2) / 2.0
+        if back1_present and back2_present:
+            new_back_distance_value = (new_back1 + new_back2) / 2.0
+        elif back1_present:
+            new_back_distance_value = new_back1
+        else:
+            new_back_distance_value = new_back2
         new_back_distance_timestamp = max_timestamp
         previous_back_distance[0] = new_back_distance_value
         previous_back_distance[1] = new_back_distance_timestamp
-
-        LAST_VALID_BACK_DISTANCE1 = new_back1
-        LAST_VALID_BACK_DISTANCE2 = new_back2
 
         if new_back_distance_value > 1700.0:
             # LAST_VALID_BACK_DISTANCE1 = -1
             # LAST_VALID_BACK_DISTANCE2 = -1
             return None
-        
+
+        LAST_VALID_BACK_DISTANCE1 = new_back1
+        LAST_VALID_BACK_DISTANCE2 = new_back2
+
         return new_back_distance_value
 
     return None
@@ -930,6 +943,7 @@ def get_left_distance(rotation):
 
         # print(new_left_distance_value)
         LAST_VALID_LEFT_DISTANCE = new_left_distance_value
+
         return new_left_distance_value + loader_offset
 
     return None
@@ -976,6 +990,7 @@ def get_right_distance(rotation):
 
         # print(new_right_distance_value)
         LAST_VALID_RIGHT_DISTANCE = new_right_distance_value
+
         return new_right_distance_value + loader_offset
 
     return None
@@ -1132,7 +1147,7 @@ def odom_thread():
 
         if count % 200 == 0:
             odom_print()
-            print("{\"x\":1000.0,\"y\":0.0,\"h\":0.0,\"m\":{\"left_drive\":35.0,\"right_drive\":41.0}}")
+            # print("{\"x\":1000.0,\"y\":0.0,\"h\":0.0,\"m\":{\"left_drive\":35.0,\"right_drive\":41.0}}")
 
         count += 1
 
@@ -1740,10 +1755,10 @@ def autonomous_left(as_skills = False):
     print("--- Toggle")
     Toggle.lower_toggle()
     # fast_toggle()
-    dt.drive_for(60, False, 100, heading = 0)
-    dt.drive_for(-70, False, 100, heading = 0)
-    dt.drive_for(60, False, 100, heading = 0)
-    dt.drive_for(-70, False, 100, heading = 0)
+    dt.drive_for(60, False, 100, heading = 0, timeout = 750)
+    dt.drive_for(-70, False, 100, heading = 0, timeout = 750)
+    dt.drive_for(60, False, 100, heading = 0, timeout = 750)
+    dt.drive_for(-70, False, 100, heading = 0, timeout = 750)
     Toggle.raise_toggle()
 
     Thread(claw_move1)
@@ -1751,19 +1766,19 @@ def autonomous_left(as_skills = False):
 
     print("--- Move 1")
     odom_distance_enable(True, False, True)
-    dt.drive_to_xy(305, 1800, False, 66, heading = 0)
+    dt.drive_to_xy(305, 1800, False, 66, heading = 0, timeout = 1000)
     odom_print()
-    dt.drive_to_xy(305, 2400, True, 66, heading = 0)
+    dt.drive_to_xy(305, 2400, True, 66, heading = 0, timeout = 2000)
     odom_print()
 
     print("--- Place Pin")
-    dt.drive_for(170, False, 50, heading = 0)
+    dt.drive_for(170, False, 50, heading = 0, timeout = 1000)
     claw_move10()
     claw.open()
 
     print("--- Reverse and recenter")
-    dt.drive_to_xy(310, 2400, False, 66, heading = 0)
-    dt.drive_to_xy(310, 2400, True, 66, heading = 0)
+    dt.drive_to_xy(310, 2400, False, 66, heading = 0, timeout = 1000)
+    dt.drive_to_xy(310, 2400, True, 66, heading = 0, timeout = 500)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     lift.command(0)
 
@@ -1772,7 +1787,7 @@ def autonomous_left(as_skills = False):
     print("Current heading: {}".format(current_heading))
     target_heading = 180
     odom_distance_enable(False, False, False)
-    dt.turn_for(target_heading - current_heading, 85)
+    dt.turn_for(target_heading - current_heading, 85, timeout = 1000)
     odom_distance_enable(False, True, True)
 
     print("--- Capture Cup")
@@ -1787,12 +1802,12 @@ def autonomous_left(as_skills = False):
     print("Current heading: {}".format(current_heading))
     target_heading = 0
     odom_distance_enable(False, False, False)
-    dt.turn_for(target_heading - current_heading, 100)
+    dt.turn_for(target_heading - current_heading, 85, timeout = 1500)
     odom_distance_enable(True, False, True)
     lift.command(11.5)
 
     print("--- Approach scoring position")
-    dt.drive_for(165, False, 50, heading = 0)
+    dt.drive_for(165, False, 50, heading = 0, timeout = 1000)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     wait(250, MSEC)
 
@@ -1810,6 +1825,9 @@ def autonomous_left(as_skills = False):
 def autonomous_right():
     # place automonous code here
 
+    odom_distance_enable(True, False, False)
+    wait(10, MSEC)
+
     log = Logger(brain,
             [left_front_motor, left_back_motor, right_front_motor, right_back_motor] + [inertial, rotation_fwd, rotation_side],
             ["lfm", "lbm", "rfm", "rbm", "gyro", "fwd", "side"], False,
@@ -1822,31 +1840,31 @@ def autonomous_right():
     odom_print()
     
     print("--- Toggle")
-    odom_distance_enable(True, False, False)
     Toggle.lower_toggle()
-    dt.drive_for(60, False, 100, heading = 0)
-    dt.drive_for(-70, False, 100, heading = 0)
-    dt.drive_for(60, False, 100, heading = 0)
-    dt.drive_for(-70, False, 100, heading = 0)
+    dt.drive_for(60, False, 100, heading = 0, timeout = 750)
+    dt.drive_for(-70, False, 100, heading = 0, timeout = 750)
+    dt.drive_for(60, False, 100, heading = 0, timeout = 750)
+    dt.drive_for(-70, False, 100, heading = 0, timeout = 750)
     Toggle.raise_toggle()
 
     Thread(claw_move1)
     # wait(250,MSEC)
 
     print("--- Move 1")
-    dt.drive_to_xy(305, 1800, False, 66, heading = 0)
+    dt.drive_to_xy(305, 1800, False, 66, heading = 0, timeout = 1000)
     odom_print()
-    dt.drive_to_xy(305, 1190, True, 66, heading = 0)
+    dt.drive_to_xy(305, 1200, True, 66, heading = 0, timeout = 2000)
     odom_print()
 
     print("--- Place Pin")
-    dt.drive_for(170, False, 50, heading = 0)
+    # dt.drive_for(170, False, 50, heading = 0)
+    dt.drive_to_xy(305+170, 1200, False, 50, heading = 0, timeout = 1000)
     claw_move10()
     claw.open()
 
     print("--- Reverse and recenter")
-    dt.drive_to_xy(310, 1190, False, 66, heading = 0)
-    dt.drive_to_xy(310, 1190, True, 66, heading = 0)
+    dt.drive_to_xy(310, 1200, False, 66, heading = 0, timeout = 1000)
+    dt.drive_to_xy(310, 1200, True, 66, heading = 0, timeout = 500)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     lift.command(0)
     odom_print()
@@ -1857,7 +1875,7 @@ def autonomous_right():
     print("Current heading: {}".format(current_heading))
     target_heading = 180
     odom_distance_enable(False, False, False)
-    dt.turn_for(target_heading - current_heading, 100)
+    dt.turn_for(target_heading - current_heading, 85, timeout = 1000)
     odom_print()
 
     print("--- Capture Cup")
@@ -1872,14 +1890,14 @@ def autonomous_right():
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 0
-    dt.turn_for(target_heading - current_heading, 100)
+    dt.turn_for(target_heading - current_heading, 85, timeout = 1000)
     odom_distance_enable(True, False, False)
     lift.command(11.5)
     odom_print()
 
     print("--- Approach scoring position")
     odom_print()
-    dt.drive_for(165, False, 50, heading = 0)
+    dt.drive_for(165, False, 50, heading = 0, timeout = 1000)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     wait(250, MSEC)
     odom_print()
@@ -2296,7 +2314,7 @@ def user_control():
     # initialize_lift()
     Thread(auto_claw_thread)
     # Thread(odom_thread)
-    # odom_distance_enable(False, False, False)
+    odom_distance_enable(False, False, False)
 
     ROBOT_ENABLED = True
 
