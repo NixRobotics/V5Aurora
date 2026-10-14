@@ -1706,12 +1706,13 @@ def autonomous_skills_to_park():
     dt.drive_to_xy(1500, 1800, True, 75, heading = current_heading)
 
     lift.command(13)
-    dt.drive_for(11 * 25.4, False, 50, timeout = 5000, heading = current_heading)
+    dt.drive_to_xy(1800-190,1800, False, 33, timeout = 2000, heading = current_heading)
+    # dt.drive_for(11 * 25.4, False, 50, timeout = 5000, heading = current_heading)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID2)
     lift.command(10)
     wait(500, MSEC)
     claw.open()
-    dt.drive_for(-150, False, 50, heading = 0)
+    dt.drive_for(-150, False, 50, heading = current_heading)
 
 
 def autonomous_none():
