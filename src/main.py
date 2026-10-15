@@ -237,6 +237,7 @@ class Lift:
         self.motor1.set_velocity(100, PERCENT)
         self.motor1.set_stopping(BrakeType.HOLD)
         self.motor1.set_timeout(5, SECONDS)
+        # TODO: Check for obstruction when lowering
         self.motor1.spin_to_position(links * self.LIFT_DEGREES_PER_LINK, DEGREES)
         self.motor1.stop()
 
@@ -311,15 +312,19 @@ class Lift:
             self.motor1.stop(BrakeType.COAST)
             self.holding = False
 
-    def stop(self):
+    def stop(self, mode = BrakeType.HOLD):
         if lift.running:
             print("Was Running")
     
-        lift.motor1.stop(BrakeType.HOLD)
-        lift.holding = True
-        lift.running = False
-    
-        lift.hold_time_start = brain.timer.time(SECONDS)
+        lift.motor1.stop(mode)
+        if mode == BrakeType.COAST:
+            print("Lift stopped with COAST")
+            lift.holding = False
+            lift.running = False
+        else:
+            lift.holding = True
+            lift.running = False
+            lift.hold_time_start = brain.timer.time(SECONDS)
 
 lift = Lift(lift_motor)
 
@@ -555,6 +560,8 @@ def set_quiet_mode(quiet):
 ### DISTANCE SENSORS
 
 ENABLE_BACK_DISTANCE = True
+ENABLE_BACK1_DISTANCE = True
+ENABLE_BACK2_DISTANCE = True
 ENABLE_LEFT_DISTANCE = not (AUTON_SEQUENCE == AutonSequence.MATCH_RIGHT)
 ENABLE_RIGHT_DISTANCE = not (AUTON_SEQUENCE == AutonSequence.MATCH_RIGHT)
 ENABLE_LOCATION_FILTER = False
@@ -681,6 +688,13 @@ class KalmanXY:
         # Measurement noise (tune per sensor)
         self.Rx = 2.0
         self.Ry = 2.0
+
+    def reset(self, X0=0.0, Y0=0.0):
+        self.X = X0
+        self.Y = Y0
+        self.Pxx = 1.0
+        self.Pxy = 0.0
+        self.Pyy = 1.0
 
     def predict(self, dx, dy):
         # State prediction
@@ -876,12 +890,16 @@ def get_back_distance(rotation):
             return None
         new_back1 = back_distance1.object_distance(MM) - BACK_DISTANCE1_CLOSE_ERROR
         new_back2 = back_distance2.object_distance(MM) - BACK_DISTANCE2_CLOSE_ERROR
-        if back1_present and back2_present:
+        if back1_present and ENABLE_BACK1_DISTANCE and back2_present and ENABLE_BACK2_DISTANCE:
             new_back_distance_value = (new_back1 + new_back2) / 2.0
-        elif back1_present:
+        elif back1_present and ENABLE_BACK1_DISTANCE:
             new_back_distance_value = new_back1
-        else:
+        elif back2_present and ENABLE_BACK2_DISTANCE:
             new_back_distance_value = new_back2
+        else:
+            # LAST_VALID_BACK_DISTANCE1 = -1
+            # LAST_VALID_BACK_DISTANCE2 = -1
+            return None
         new_back_distance_timestamp = max_timestamp
         previous_back_distance[0] = new_back_distance_value
         previous_back_distance[1] = new_back_distance_timestamp
@@ -1054,12 +1072,14 @@ def predict_wheels():
 
     return new_X, new_Y, new_theta
 
-def odom_distance_enable(back, left, right):
-    global ENABLE_BACK_DISTANCE, ENABLE_LEFT_DISTANCE, ENABLE_RIGHT_DISTANCE
+def odom_distance_enable(back, left, right, back1 = True, back2 = True):
+    global ENABLE_BACK_DISTANCE, ENABLE_LEFT_DISTANCE, ENABLE_RIGHT_DISTANCE, ENABLE_BACK1_DISTANCE, ENABLE_BACK2_DISTANCE
 
     ENABLE_BACK_DISTANCE = back
     ENABLE_LEFT_DISTANCE = left
     ENABLE_RIGHT_DISTANCE = right
+    ENABLE_BACK1_DISTANCE = back1
+    ENABLE_BACK2_DISTANCE = back2
 
 def odom_location_filter_enable(enable):
     global ENABLE_LOCATION_FILTER
@@ -1093,6 +1113,7 @@ def odom_thread():
                 meas_back_distance += HIDDEN_PERIMITER + ROBOT_LENGTH / 2 # add the hidden perimeter and half the robot length
                 if FORCE_LOCATION_RESET:
                     X = meas_back_distance
+                    filter.reset(X, Y)
                 elif compass == NORTH:
                     X, Y = filter.update_x(meas_back_distance)
                 elif compass == SOUTH:
@@ -1141,6 +1162,7 @@ def odom_thread():
                 Y = Y_Right
             elif Y_Left is not None:
                 Y = Y_Left
+            filter.reset(X, Y)
             FORCE_LOCATION_RESET = False
 
         Pxx, Pyy = filter.Pxx, filter.Pyy
@@ -1510,66 +1532,6 @@ def autonomous_calibration():
     # print("Odometer distance: {}".format(motor_total_distance()))
     # print("Rotation: {}".format(inertial.rotation()))
 
-def autonomous_skills_old():
-    # Thread(odom_thread)
-    # place automonous code here
-    while not arm.is_initialized():
-        wait(10, MSEC)
-    wait(1, SECONDS)
-    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID1)
-    wait(500, MSEC)
-    # Thread(log_drivetrain)
-    dt.drive_for(51 * 25.4, False, 50, heading = 0)
-    dt.drive_for(-450, True, 50, heading = 0)
-    lift.command(13)
-    dt.drive_for(11 * 25.4, False, 50, timeout = 5000, heading = 0)
-    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID2)
-    lift.command(10)
-    wait(500, MSEC)
-    claw.open()
-    dt.drive_for(-150, False, 50, heading = 0)
-    # TODO: Move back to safe distance
-
-def autonomous_skills_cup_from_floor():
-    print("--- Autonomous Skills Cup from Floor ---")
-    claw.open()
-    print("--- Drive Forward")
-    odom_distance_enable(True, True, False)
-    print("--- Drive To Y=1800")
-    dt.drive_to_xy(900.0, 2100.0, False, 66, heading = 0)
-    odom_distance_enable(False, False, True)
-    dt.drive_to_xy(900.0, 2390.0, True, 66, heading = 0)
-    dt.drive_to_xy(900.0, 2390.0, True, 66, heading = 0)
-    odom_distance_enable(True, False, True)
-    #odom_print()
-    #wait(500, MSEC)
-    #odom_print()
-    #print("--- Recenter")
-    #dt.drive_to_xy(900.0, 2400.0, True, 66, heading = 0)
-
-    if claw_distance.is_object_detected():
-        distance = claw_distance.object_distance(MM)
-        print("cup distance: {}".format(distance))
-        if distance > 250: return True
-    else:
-        return True
-    
-    dt.drive_for(distance - 30, False, 25, heading = 0)
-    # dt.drive_to_xy(X + distance - 35, Y, False, 25, heading = 0)
-    claw.close()
-
-    if claw_distance.is_object_detected():
-        distance = claw_distance.object_distance(MM)
-        print("cup distance: {}".format(distance))
-        if distance > 100: return True
-    else:
-        return False
-
-    return False
-
-    # while True: wait(1, SECONDS)
-
-
 BACKGROUND_LIFT_THREAD_DONE = False
 def background_lift_thread(height, arm_position):
     global BACKGROUND_LIFT_THREAD_DONE
@@ -1578,6 +1540,62 @@ def background_lift_thread(height, arm_position):
     lift.command(height)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, arm_position)
     BACKGROUND_LIFT_THREAD_DONE = True
+
+def autonomous_skills_cup_from_floor():
+    print("--- Autonomous Skills Cup from Floor ---")
+    claw.open()
+    print("--- Drive Forward to X = 900")
+    odom_distance_enable(True, True, False)
+    dt.drive_to_xy(900.0, 2100.0, False, 66, heading = 0)
+
+    print("--- Drive Sideways to Y = 2400")
+    odom_distance_enable(False, False, True)
+    # TODO: Left and right distance sensors is current main difference between sequence 1 and 2
+    # robot strafes right slightly when driving forward
+    dt.drive_to_xy(900.0, 2390.0, True, 66, heading = 0)
+    dt.turn_to(0, 66)
+    dt.drive_to_xy(900.0, 2390.0, True, 66, heading = 0)
+    odom_distance_enable(True, False, True)
+
+    print("--- Detecting cup")
+    cup_detected = False
+    cup_captured = False
+    if claw_distance.is_object_detected():
+        distance = claw_distance.object_distance(MM)
+        print("cup distance: {}".format(distance))
+        if distance <= 250: cup_detected = True
+
+    if cup_detected:
+        dt.drive_for(distance - 30, False, 25, heading = 0)
+        # dt.drive_to_xy(X + distance - 35, Y, False, 25, heading = 0)
+        claw.close()
+
+        if claw_distance.is_object_detected():
+            distance = claw_distance.object_distance(MM)
+            print("cup distance: {}".format(distance))
+            if distance <= 100: cup_captured = True
+
+    return not cup_captured
+
+    # while True: wait(1, SECONDS)
+
+def autonomous_skills_cup_from_floor_recover(sequence):
+    print("--- Autonomous Skills CUP_FROM_FLOOR_RECOVERY ---")
+    # set robot to same state as end of skills_turn_and_stack
+    if (sequence == 1):
+        # reverse back
+        odom_distance_enable(False, True, True)
+        dt.drive_to_xy(900, 2400, False, 66, heading = 0)
+        # face back wall
+        odom_distance_enable(False, False, False)
+        dt.turn_to(180, 75)
+        odom_distance_enable(False, True, True)
+    if (sequence == 2):
+        # reverse back
+        odom_distance_enable(False, True, True)
+        dt.drive_to_xy(900, 3000, False, 66, heading = 180)
+        # recenter
+        dt.turn_to(180, 75)
 
 def autonomous_skills_turn_and_stack():
     print("--- Autonomous Skills Turn and Stack ---")
@@ -1592,7 +1610,7 @@ def autonomous_skills_turn_and_stack():
     dt.turn_for(target_heading - current_heading, 50)
     odom_distance_enable(False, True, True)
 
-    # lift.command(20)
+    print("--- Drive to goal")
     dt.drive_to_xy(770, 2400, False, 40, heading = 180, timeout = 1500)
     while not BACKGROUND_LIFT_THREAD_DONE:
         wait(50, MSEC)
@@ -1601,16 +1619,32 @@ def autonomous_skills_turn_and_stack():
     wait(250, MSEC)
     claw.open()
     wait(250, MSEC)
+
+    print("--- Detecting cup")
     dt.drive_to_xy(850, 2400, False, 40, heading = 180)
-    if claw_distance.is_object_detected():
-        distance = claw_distance.object_distance(MM)
-        print("cup distance: {}".format(distance))
-        if distance > 200:
-            arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
-            return True
-    else:
-        print("no cup detected")
-        return True
+
+    cup_placed = False
+    detect_try = 0
+    while not cup_placed and detect_try < 2:
+        detect_try += 1
+        print("... try: {}".format(detect_try))
+        if claw_distance.is_object_detected():
+            distance = claw_distance.object_distance(MM)
+            print("cup distance: {}".format(distance))
+            if distance <= 200:
+                print("cup detected try {}".format(detect_try))
+                cup_placed = True
+        if (not cup_placed and detect_try == 1):
+            # center of stack should be at (600, 2400)
+            heading_to_stack = math.degrees(math.atan2(Y - 2400, X - 600))
+            dt.turn_for(heading_to_stack, 33)
+        if (detect_try == 2):
+            # reset heading
+            dt.turn_to(180, 33)
+
+    # arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
+
+    # TODO: Danger is if cup is stuck under lift after stacking attempt
     Thread(background_lift_thread, (0, Arm.CLAW_ARM_DOWN))
     dt.drive_to_xy(900, 2400, False, 50, heading = 180)
     current_heading = inertial.rotation()
@@ -1619,17 +1653,14 @@ def autonomous_skills_turn_and_stack():
     # dt.turn_for(target_heading - current_heading, 66)
     dt.turn_to(target_heading, 66)
 
-    return False
+    return not cup_placed
 
 def autonomous_skills_cup_from_floor2():
     print("--- Autonomous Skills Pick Pin from Floor2 ---")
+    odom_distance_enable(False, True, True)
     claw.open()
     dt.drive_to_xy(900.0, 3000, True, 66, heading = 180)
-    current_heading = inertial.rotation()
-    print("Current heading: {}".format(current_heading))
-    target_heading = 180
-    # dt.turn_for(target_heading - current_heading, 66)
-    dt.turn_to(target_heading, 66)
+    dt.turn_to(180, 66)
     dt.drive_to_xy(900.0, 3000, True, 66, heading = 180)
 
     if claw_distance.is_object_detected():
@@ -1653,10 +1684,19 @@ def autonomous_skills_cup_from_floor2():
     
     return False
 
-def autonomous_skills_turn_and_stack2():
+def autonomous_skills_turn_and_stack2(short_stack = False):
     print("--- Autonomous Skills Turn and Stack2 ---")
+    if short_stack:
+        print("--- Short Stack Mode Enabled ---")
+        lift_height1 = 20
+        lift_height2 = 17
+    else:
+        lift_height1 = 27
+        lift_height2 = 25
+        
+    odom_distance_enable(False, True, True)
     lift.command(3)
-    Thread(background_lift_thread, (27, Arm.CLAW_ARM_MID2))
+    Thread(background_lift_thread, (lift_height1, Arm.CLAW_ARM_MID2))
     dt.drive_to_xy(900, 3000, False, 50, heading = 180)
     dt.drive_to_xy(900, 2400, True, 50, heading = 180)
 
@@ -1665,19 +1705,34 @@ def autonomous_skills_turn_and_stack2():
     while not BACKGROUND_LIFT_THREAD_DONE:
         wait(50, MSEC)
 
-    lift.command(25)
+    lift.command(lift_height2)
     claw.open()
     wait(250, MSEC)
     dt.drive_to_xy(850, 2400, False, 40, heading = 180)
-    if claw_distance.is_object_detected():
-        distance = claw_distance.object_distance(MM)
-        print("cup distance: {}".format(distance))
-        if distance > 200:
-            arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
-            return True
+
+    cup_placed = False
+    detect_try = 0
+    while not cup_placed and detect_try < 2:
+        detect_try += 1
+        print("... try: {}".format(detect_try))
+        if claw_distance.is_object_detected():
+            distance = claw_distance.object_distance(MM)
+            print("cup distance: {}".format(distance))
+            if distance <= 200:
+                print("cup detected try {}".format(detect_try))
+                cup_placed = True
+        if (not cup_placed and detect_try == 1):
+            # center of stack should be at (600, 2400)
+            heading_to_stack = math.degrees(math.atan2(Y - 2400, X - 600))
+            dt.turn_for(heading_to_stack, 33)
+        if (detect_try == 2):
+            # reset heading
+            dt.turn_to(180, 33)
+        
+    # TODO: safer to not move lift is no cup is dected
     Thread(background_lift_thread, (0, Arm.CLAW_ARM_DOWN))
     dt.drive_to_xy(900, 2400, False, 50, heading = 180)
-    return False
+    return not cup_placed
 
 def autonomous_skills_pick_pin():
     print("--- Autonomous Skills Pick Pin ---")
@@ -1690,9 +1745,9 @@ def autonomous_skills_pick_pin():
     odom_distance_enable(False, True, False)
     distance = claw_distance.object_distance(MM)
     print("Claw_distance: {}".format(distance))
-    dt.drive_for(distance - 70, False, 33, heading = 180)
+    dt.drive_for(distance - 70, False, 33, heading = 180, timeout = 1000)
     claw.close()
-    dt.drive_for(50, False, 25, heading = 180)
+    dt.drive_for(50, False, 25, heading = 180, timeout = 1000)
     lift.command(1)
     dt.drive_to_xy(900.0, 3600-300, False, 66, heading = 180)
 
@@ -1710,7 +1765,8 @@ def autonomous_skills_to_park():
     print("Rounding heading: {}".format(current_heading))
     dt.drive_to_xy(900.0, 2100, True, 75, heading = current_heading)
     odom_print()
-    odom_distance_enable(True, False, False)
+    # right back distance sensor has a slight chance of seeing the stack
+    odom_distance_enable(True, False, False, back2 = False)
     dt.drive_to_xy(1500, 2100, False, 75, heading = current_heading)
     odom_print()
     odom_distance_enable(False, False, False)
@@ -1992,26 +2048,33 @@ def autonomous_skills():
 
     # 15 seconds
     autonomous_left(as_skills=True)
+    stack_one_failed = False
     failed = autonomous_skills_cup_from_floor()
     if failed:
-        print("Failed to pick up cup from floor.")
-        return
-    failed = autonomous_skills_turn_and_stack()
-    if failed:
-        print("Failed to turn and stack.")
-        return
+        stack_one_failed = True
+        print("Failed to pick up cup from floor - attempting recovery")
+        autonomous_skills_cup_from_floor_recover(1)
+    if not failed:
+        failed = autonomous_skills_turn_and_stack()
+        if failed:
+            stack_one_failed = True
+            print("Failed to turn and stack.")
+
+    stack_two_failed = False
     failed = autonomous_skills_cup_from_floor2()
     if failed:
-        print("Failed to pick up cup from floor 2.")
-        return
-    failed = autonomous_skills_turn_and_stack2()
-    if failed:
-        print("Failed to turn and stack 2.")
-        return
+        stack_two_failed = True
+        print("Failed to pick up cup from floor - attempting recovery")
+        autonomous_skills_cup_from_floor_recover(2)
+    if not failed:
+        failed = autonomous_skills_turn_and_stack2(stack_one_failed)
+        if failed:
+            print("Failed to turn and stack 2.")
+
     failed = autonomous_skills_pick_pin()
     if failed:
         print("Failed to pick pin.")
-        return
+        # return
     autonomous_skills_to_park()
 
 
