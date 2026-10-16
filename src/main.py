@@ -1765,19 +1765,20 @@ def autonomous_skills_to_park():
     print("Rounding heading: {}".format(current_heading))
     dt.drive_to_xy(900.0, 2100, True, 75, heading = current_heading)
     odom_print()
-    odom_distance_enable(True, False, False)
+    odom_distance_enable(True, False, False, back2 = False)
     dt.drive_to_xy(1500, 2100, False, 75, heading = current_heading)
     odom_print()
-    odom_distance_enable(False, False, True)
-    dt.drive_to_xy(1500, 1800, True, 75, heading = current_heading)
+    odom_distance_enable(False, False, False)
+    dt.turn_for(-45, 75)
 
     lift.command(13)
-    dt.drive_for(11 * 25.4, False, 50, timeout = 5000, heading = current_heading)
-    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID2)
+    dt.drive_for(350, False, 33, timeout = 2000)
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID1)
     lift.command(10)
     wait(500, MSEC)
     claw.open()
     dt.drive_for(-150, False, 50, heading = 0)
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
 
 def autonomous_none():
     # place automonous code here
