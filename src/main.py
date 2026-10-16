@@ -42,12 +42,12 @@ except ImportError:
 
 CALIBRATION = 99
 
-# ALLIANCE_COLOR = AllianceColor.RED
-ALLIANCE_COLOR = AllianceColor.BLUE
+ALLIANCE_COLOR = AllianceColor.RED
+# ALLIANCE_COLOR = AllianceColor.BLUE
 
-# AUTON_SEQUENCE = AutonSequence.SKILLS
+AUTON_SEQUENCE = AutonSequence.SKILLS
 # AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
-AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
+# AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
 # AUTON_SEQUENCE = AutonSequence.MATCH_NONE
 # AUTON_SEQUENCE = CALIBRATION
 
@@ -1765,40 +1765,19 @@ def autonomous_skills_to_park():
     print("Rounding heading: {}".format(current_heading))
     dt.drive_to_xy(900.0, 2100, True, 75, heading = current_heading)
     odom_print()
-    # right back distance sensor has a slight chance of seeing the stack
-    odom_distance_enable(True, False, False, back2 = False)
+    odom_distance_enable(True, False, False)
     dt.drive_to_xy(1500, 2100, False, 75, heading = current_heading)
     odom_print()
-    odom_distance_enable(False, False, False)
-    dt.turn_for(-45, 75)
+    odom_distance_enable(False, False, True)
+    dt.drive_to_xy(1500, 1800, True, 75, heading = current_heading)
 
     lift.command(13)
-    dt.drive_for(350, False, 33, timeout = 2000)
-    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID1)
+    dt.drive_for(11 * 25.4, False, 50, timeout = 5000, heading = current_heading)
+    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID2)
     lift.command(10)
     wait(500, MSEC)
     claw.open()
-    dt.drive_for(-150, False, 50)
-    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
-
-def autonomous_skills_to_park_temp():
-    print("--- Autonomous Skills to Park Temp ---")
-    odom_print()
-    odom_distance_enable(True, False, False)
-    dt.drive_to_xy(1500, 2100, False, 75, heading = 0)
-    odom_print()
-    odom_distance_enable(False, False, False)
-    dt.turn_for(-45, 75)
-
-    lift.command(13)
-    dt.drive_for(350, False, 33, timeout = 2000)
-    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID1)
-    lift.command(10)
-    wait(500, MSEC)
-    claw.open()
-    dt.drive_for(-150, False, 50)
-    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
-
+    dt.drive_for(-150, False, 50, heading = 0)
 
 def autonomous_none():
     # place automonous code here
