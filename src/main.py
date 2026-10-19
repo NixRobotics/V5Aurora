@@ -45,11 +45,14 @@ CALIBRATION = 99
 ALLIANCE_COLOR = AllianceColor.RED
 # ALLIANCE_COLOR = AllianceColor.BLUE
 
-AUTON_SEQUENCE = AutonSequence.SKILLS
-# AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
+# AUTON_SEQUENCE = AutonSequence.SKILLS
+AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
 # AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
 # AUTON_SEQUENCE = AutonSequence.MATCH_NONE
 # AUTON_SEQUENCE = CALIBRATION
+
+AUTON_START_Y = 2100
+AUTON_START_X = 0
 
 # ------------------------------------------------------------ #
 ### DECLARE DEVICES
@@ -75,6 +78,8 @@ if BEETLE:
     DRIVETRAIN_WHEEL_ANGLES = 45 # deg from straight
     DRIVETRAIN_WHEEL_SIZE = 260 # mm circumference
     DRIVETRAIN_MAX_TORQUE = 1.05 # Nm
+    DRIVETRAIN_FORWARD_EFFICIENCY = 1
+
 else:
     claw_arm_motor1 = Motor(Ports.PORT19, GearSetting.RATIO_18_1, False)
     claw_arm_motor2 = Motor(Ports.PORT11, GearSetting.RATIO_18_1, True)
@@ -87,38 +92,152 @@ else:
     DRIVETRAIN_WHEEL_ANGLES = 45 # deg from straight
     DRIVETRAIN_WHEEL_SIZE = 220 # mm circumference
     DRIVETRAIN_MAX_TORQUE = 0.35 # Nm
+    DRIVETRAIN_FORWARD_EFFICIENCY = 1 / 1.045
 
 inertial = InertialWrapper(Ports.PORT5, 181.5/180.0)
-claw_distance = Distance(Ports.PORT2)
+
+class DistanceWrapper(Distance):
+
+    NotConnectedError = -1
+    NoObjectError = -2
+    OutOfRangeError = -3
+
+    ErrorMode_None = 0
+    ErrorMode_Offset = 1
+    ErrorMode_Linear = 2
+    ErrorMode_Logistic = 3
+
+    class ErrorModeDescriptor:
+        def __init__(self):
+            pass
+
+        def correct(self, value):
+            return value
+
+    class ErrorMode_None_Descriptor(ErrorModeDescriptor):
+        def __init__(self):
+            super().__init__()
+
+    class ErrorMode_Offset_Descriptor(ErrorModeDescriptor):
+        def __init__(self, offset):
+            self.offset = offset
+
+        def correct(self, value):
+            return value - self.offset
+
+    class ErrorMode_Linear_Descriptor(ErrorModeDescriptor):
+        def __init__(self, start_value, start_offset, end_value, end_offset):
+            self.start_value = start_value
+            self.start_corrected = start_value - start_offset
+            self.end_value = end_value
+            self.end_corrected = end_value - end_offset
+            self.slope = (self.end_corrected - self.start_corrected) / (end_value - start_value)
+
+        def correct(self, value):
+            return self.start_corrected + self.slope * (value - self.start_value)
+
+    class ErrorMode_Logistic_Descriptor(ErrorModeDescriptor):
+        # Midpoint at 175mm, steepness 0.05
+        def __init__(self, error, midpoint, steepness):
+            self.error = error
+            self.midpoint = midpoint
+            self.steepness = steepness
+
+        def correct(self, value):
+            return value - self.error / (1 + math.exp(self.steepness * (value - self.midpoint)))
+
+    def __init__(self, port, close_error_descriptor=None, far_error_descriptor=None, transition_distance=None, max_value=None):
+
+        self.close_error_descriptor = close_error_descriptor
+        self.far_error_descriptor = far_error_descriptor
+        self.transition_distance = transition_distance
+        self.max_value = max_value
+
+        super().__init__(port)
+
+    def set_close_error_mode(self, mode: ErrorModeDescriptor):
+        self.close_error_descriptor = mode
+
+    def set_far_error_mode(self, mode: ErrorModeDescriptor):
+        self.far_error_descriptor = mode
+
+    def get_raw_distance(self):
+        '''
+        Get the raw distance measured by the sensor without any error corrections.
+
+        Returns:
+            float: The raw distance value in millimeters.
+        '''
+
+        if not self.installed():
+            return self.NotConnectedError
+
+        if not self.is_object_detected():
+            return self.NoObjectError
+
+        return self.object_distance(MM)
+
+    def get_distance(self):
+        '''
+        Get the distance measured by the sensor, applying any error corrections.
+
+        Returns:
+            float: The corrected distance value in millimeters.
+        '''
+
+        if not self.installed():
+            return self.NotConnectedError
+
+        if not self.is_object_detected():
+            return self.NoObjectError
+
+        value = self.object_distance(MM)
+
+        if self.transition_distance is None or value < self.transition_distance:
+            # Close region correction
+            if self.close_error_descriptor is not None:
+                value = self.close_error_descriptor.correct(value)
+
+        if self.transition_distance is not None and value >= self.transition_distance:
+            # Far region correction
+            if self.far_error_descriptor is not None:
+                value = self.far_error_descriptor.correct(value)
+
+        if self.max_value is not None and value > self.max_value:
+            return self.OutOfRangeError
+        
+        return value
+
+claw_distance = DistanceWrapper(Ports.PORT2)
 
 HIDDEN_PERIMITER = 15 #mm
 
 # at 592 - back1 reads 595.3, back2 reads 590.9
-BACK_DISTANCE_COMPENSATION = 1500 / 1525
 BACK_DISTANCE1_FROM_BACK = 75 # mm
 BACK_DISTANCE2_FROM_BACK = 69 # mm
 BACK_DISTANCE1_CLOSE_ERROR = 0 # mm (at 145mm reads 145mm)
 BACK_DISTANCE2_CLOSE_ERROR = 6 #mm (at 145mm reads 151mm)
-back_distance1 = Distance(Ports.PORT4) # left side
-back_distance2 = Distance(Ports.PORT9) # right side
+back_distance1 = DistanceWrapper(Ports.PORT4) # left side
+back_distance2_close_error = DistanceWrapper.ErrorMode_Offset_Descriptor(BACK_DISTANCE2_CLOSE_ERROR)
+back_distance2 = DistanceWrapper(Ports.PORT9, close_error_descriptor=back_distance2_close_error) # right side
 
 ROBOT_WIDTH = 192 * 2 # (mm)
 ROBOT_LENGTH = 183 * 2 # (mm) 185 measured from back wall to center line
 
-LEFT_DISTANCE_COMPENSATION = 1.0
 LEFT_DISTANCE_FROM_LEFT = 5 # mm
 LEFT_DISTANCE_CLOSE_ERROR = -15 # mm (at 145mm reads 130mm, at 200mm reads 185mm, at 250mm reads 250mm, at 295mm reads 295mm)
 LEFT_DISTANCE_FAR_ERROR = 0 # mm roughly at 250mm
 LEFT_DISTANCE_FAR_TRANSITION = 250 # mm
-left_distance = Distance(Ports.PORT6)
+left_distance_close_error = DistanceWrapper.ErrorMode_Logistic_Descriptor(LEFT_DISTANCE_CLOSE_ERROR, 175, 0.05)
+left_distance = DistanceWrapper(Ports.PORT6, close_error_descriptor=left_distance_close_error, transition_distance=LEFT_DISTANCE_FAR_TRANSITION, max_value=1700)
 
-RIGHT_DISTANCE_COMPENSATION = 1.0
 RIGHT_DISTANCE_FROM_RIGHT = 5 # mm
 RIGHT_DISTANCE_CLOSE_ERROR = 0 # mm (at 145mm reads 145mm)
 RIGHT_DISTANCE_CLOSE_TRANSITION = 400 # mm
-RIGHT_DISTANCE_FAR_ERROR = 18 # mm (at 1605mm reads 1623mm, at 1205mm reads 1015mm, at 407mm reads 407mm)
+RIGHT_DISTANCE_FAR_ERROR = 18 # mm (at 1605mm reads 1623mm, at 1205mm reads 1215mm, at 407mm reads 407mm)
 RIGHT_DISTANCE_FAR_TRANSITION = 1600 # mm
-right_distance = Distance(Ports.PORT8)
+right_distance_far_error = DistanceWrapper.ErrorMode_Linear_Descriptor(RIGHT_DISTANCE_CLOSE_TRANSITION, RIGHT_DISTANCE_CLOSE_ERROR, RIGHT_DISTANCE_FAR_TRANSITION, RIGHT_DISTANCE_FAR_ERROR)
+right_distance = DistanceWrapper(Ports.PORT8, far_error_descriptor=right_distance_far_error, transition_distance=RIGHT_DISTANCE_CLOSE_TRANSITION, max_value=1700)
 
 ROTATION_SIDE_WHEEL_SIZE = 156 # 2 * 25.4 * pi # mm circumference
 ROTATION_SIDE_WHEEL_OFFSET = 59.6 # 61.0 # mm (forward)
@@ -539,18 +658,454 @@ def auto_claw_thread():
 
 ### ROBOT LOCATION
 
-X = 0
-Pxx = 1.0
-Y = 1800
-Pyy = 1.0
-THETA = 0
+class KalmanXY:
+    def __init__(self, X0=0.0, Y0=0.0):
+        # State
+        self.X = X0
+        self.Y = Y0
 
-def location_callback():
-    return X, Y, THETA
+        # Covariance matrix P
+        self.Pxx = 1.0
+        self.Pxy = 0.0
+        self.Pyy = 1.0
 
+        # Process noise (tune these)
+        self.Qx = 0.01
+        self.Qy = 0.01
+
+        # Measurement noise (tune per sensor)
+        self.Rx = 2.0
+        self.Ry = 2.0
+
+    def reset(self, X0=0.0, Y0=0.0):
+        self.X = X0
+        self.Y = Y0
+        self.Pxx = 1.0
+        self.Pxy = 0.0
+        self.Pyy = 1.0
+
+    def predict(self, dx, dy):
+        # State prediction
+        self.X += dx
+        self.Y += dy
+
+        # Covariance prediction
+        self.Pxx += self.Qx
+        self.Pyy += self.Qy
+        # Pxy stays the same (no cross‑coupling in motion model)
+
+    def update_x(self, meas_x):
+        # Innovation covariance
+        S = self.Pxx + self.Rx
+
+        # Kalman gain
+        Kx = self.Pxx / S
+        Ky = self.Pxy / S
+
+        # Update state
+        self.X += Kx * (meas_x - self.X)
+        self.Y += Ky * (meas_x - self.Y)
+
+        # Update covariance
+        self.Pxx = (1 - Kx) * self.Pxx
+        self.Pxy = (1 - Kx) * self.Pxy
+        self.Pyy = self.Pyy - Ky * self.Pxy
+
+        return self.X, self.Y
+
+    def update_y(self, meas_y):
+        S = self.Pyy + self.Ry
+
+        Kx = self.Pxy / S
+        Ky = self.Pyy / S
+
+        self.X += Kx * (meas_y - self.X)
+        self.Y += Ky * (meas_y - self.Y)
+
+        self.Pyy = (1 - Ky) * self.Pyy
+        self.Pxy = (1 - Ky) * self.Pxy
+        self.Pxx = self.Pxx - Kx * self.Pxy
+
+        return self.X, self.Y
+
+class XOdometry():
+
+    # TODO:
+    # - Filter unexpected distance reading based on current location
+    # - Stop filter from predicting if robot is stationary
+
+    EFORWARD = 0
+    ERIGHT = 1
+    EBACK = 2
+    ELEFT = 3
+
+    NORTH = 0
+    EAST = 1
+    SOUTH = 2
+    WEST = 3
+
+    DistanceError_SensorValue = -4
+    DistanceError_NotUpdated = -5
+    DistanceError_UnexpectedLocation = -6
+    DistanceError_AngleFiltered = -7
+    DistanceError_LocationFiltered = -8
+
+    def __init__(self):
+        self.X = 0
+        self.Pxx = 1.0
+        self.Y = 0 if (AUTON_SEQUENCE == CALIBRATION) else AUTON_START_Y
+        self.Pyy = 1.0
+        self.THETA = 0
+
+        self.FORCE_LOCATION_RESET = True
+
+        self.previous_motor_positions = [0.0, 0.0, 0.0, 0.0]
+        self.previous_rotation_positions = [0.0, 0.0]
+        self.previous_theta = self.THETA
+        self.previous_back1_distance = [0.0, 0]
+        self.previous_back2_distance = [0.0, 0]
+        self.previous_left_distance = [0.0, 0]
+        self.previous_right_distance = [0.0, 0]
+
+        self.ENABLE_BACK_DISTANCE = True
+        self.ENABLE_BACK1_DISTANCE = True
+        self.ENABLE_BACK2_DISTANCE = True
+        self.ENABLE_LEFT_DISTANCE = not (AUTON_SEQUENCE == AutonSequence.MATCH_RIGHT)
+        self.ENABLE_RIGHT_DISTANCE = not (AUTON_SEQUENCE == AutonSequence.MATCH_RIGHT)
+        self.ENABLE_LOCATION_FILTER = False
+
+        self.LAST_VALID_BACK1_DISTANCE = -1
+        self.LAST_VALID_BACK2_DISTANCE = -1
+        self.LAST_VALID_LEFT_DISTANCE = -1
+        self.LAST_VALID_RIGHT_DISTANCE = -1
+
+    def location_callback(self):
+        return self.X, self.Y, self.THETA
+
+    def initialize_wheels(self):
+        self.previous_motor_positions = [left_front_motor.position(TURNS), left_back_motor.position(TURNS), right_front_motor.position(TURNS), right_back_motor.position(TURNS)]
+        self.previous_theta = self.THETA
+
+    def initialize_rotation(self):
+        if rotation_fwd.installed():
+            rotation_fwd.set_position(0, TURNS)
+            rotation_fwd_position = rotation_fwd.position(TURNS)
+        else:
+            rotation_fwd_position = None
+
+        if rotation_side.installed():
+            rotation_side.set_position(0, TURNS)
+            rotation_side_position = rotation_side.position(TURNS)
+        else:
+            rotation_side_position = None
+
+        self.previous_rotation_positions = [rotation_fwd_position, rotation_side_position]
+
+    def initialize_distances(self):
+        self.previous_back1_distance[0] = back_distance1.object_distance(MM)
+        self.previous_back1_distance[1] = back_distance1.timestamp()
+
+        self.previous_back2_distance[0] = back_distance2.object_distance(MM)
+        self.previous_back2_distance[1] = back_distance2.timestamp()
+    
+        self.previous_left_distance[0] = left_distance.object_distance(MM)
+        self.previous_left_distance[1] = left_distance.timestamp()
+
+        self.previous_right_distance[0] = right_distance.object_distance(MM)
+        self.previous_right_distance[1] = right_distance.timestamp()
+
+    def motor_distance_step(self, current, previous):
+        lf = current[0] - previous[0]
+        lb = current[1] - previous[1]
+        rf = current[2] - previous[2]
+        rb = current[3] - previous[3]
+        forward = (lf + lb + rf + rb) / 4
+        side = (lf - rf - lb + rb) / 4
+        forward = forward * DRIVETRAIN_EXTERNAL_GEAR_RATIO * DRIVETRAIN_WHEEL_SIZE * sqrt(2) * DRIVETRAIN_FORWARD_EFFICIENCY
+        side = side * DRIVETRAIN_EXTERNAL_GEAR_RATIO * DRIVETRAIN_WHEEL_SIZE * sqrt(2)
+        return forward, side
+
+    def tracking_distance_step(self, current, previous):
+        if current[0] is None: forward = None
+        else:
+            forward = current[0] - previous[0]
+        if current[1] is None: side = None
+        else:
+            side = current[1] - previous[1]
+
+        if forward is not None:
+            forward = forward * ROTATION_FWD_WHEEL_SIZE
+        if side is not None:
+            side = side * ROTATION_SIDE_WHEEL_SIZE
+        return forward, side
+
+    def motor_total_distance(self):
+        lf = left_front_motor.position(TURNS)
+        lb = left_back_motor.position(TURNS)
+        rf = right_front_motor.position(TURNS)
+        rb = right_back_motor.position(TURNS)
+        forward, side = self.motor_distance_step([lf, lb, rf, rb], [0, 0, 0, 0])
+        return forward, side
+
+    def predict_wheels(self):
+        current_motor_positions = [left_front_motor.position(TURNS), left_back_motor.position(TURNS), right_front_motor.position(TURNS), right_back_motor.position(TURNS)]
+
+        if not rotation_fwd.installed(): rotation_fwd_position = None
+        else: rotation_fwd_position = rotation_fwd.position(TURNS)
+
+        if not rotation_side.installed(): rotation_side_position = None
+        else: rotation_side_position = rotation_side.position(TURNS)
+
+        current_rotation_positions = [rotation_fwd_position, rotation_side_position]
+        current_theta = inertial.rotation()
+
+        delta_motor_forward, delta_motor_side = self.motor_distance_step(current_motor_positions, self.previous_motor_positions)
+        delta_rotation_forward, delta_rotation_side = self.tracking_distance_step(current_rotation_positions, self.previous_rotation_positions)
+        if delta_rotation_forward is not None:
+            delta_forward = delta_rotation_forward
+            # positive right offset means recorded radius is smaller than at center of robot for right turns, so add offset
+            forward_offset = ROTATION_FWD_WHEEL_OFFSET
+        else:
+            delta_forward = delta_motor_forward
+            forward_offset = 0.0
+
+        if delta_rotation_side is not None:
+            delta_side = delta_rotation_side
+            # positive forward offset means recorded radius is smaller than at center of robot for forward turns, so subtract offset
+            side_offset = ROTATION_SIDE_WHEEL_OFFSET
+        else:
+            delta_side = delta_motor_side
+            side_offset = 0.0
+        delta_theta = current_theta - self.previous_theta
+
+        if delta_theta == 0.0:
+            to_global_rotation_angle = current_theta
+            delta_local_x = delta_forward
+            delta_local_y = delta_side
+        else:
+            r_forward = forward_offset + delta_forward / radians(delta_theta) # mm
+            r_side = -side_offset + delta_side / radians(delta_theta) # mm
+
+            to_global_rotation_angle = current_theta + delta_theta / 2.0
+            delta_local_x = r_forward * 2.0 * sin(radians(delta_theta) / 2.0)
+            delta_local_y = r_side * 2.0 * sin(radians(delta_theta) / 2.0)
+
+        delta_global_x = delta_local_x * cos(radians(to_global_rotation_angle)) - delta_local_y * sin(radians(to_global_rotation_angle))
+        delta_global_y = delta_local_x * sin(radians(to_global_rotation_angle)) + delta_local_y * cos(radians(to_global_rotation_angle))
+
+        self.previous_motor_positions = current_motor_positions
+        self.previous_rotation_positions = current_rotation_positions
+        self.previous_theta = current_theta
+
+        new_X = self.X + delta_global_x
+        new_Y = self.Y + delta_global_y
+        new_theta = current_theta
+
+        return new_X, new_Y, new_theta
+
+    def odom_distance_enable(self, back, left, right, back1 = True, back2 = True):
+        self.ENABLE_BACK_DISTANCE = back
+        self.ENABLE_LEFT_DISTANCE = left
+        self.ENABLE_RIGHT_DISTANCE = right
+        self.ENABLE_BACK1_DISTANCE = back1
+        self.ENABLE_BACK2_DISTANCE = back2
+
+    def odom_location_filter_enable(self, enable):
+        self.ENABLE_LOCATION_FILTER = enable
+
+    def compass_heading(self,rotation: float) -> int:
+        heading = rotation
+
+        heading = rotation % 360.0
+        # needed as floating vs. double precision module may produce slightly different results for values very close to 360.0
+        if heading >= 360.0:
+            heading -= 360.0
+
+        if heading >= 315 or heading < 45:
+            return XOdometry.NORTH
+        elif heading >= 45 and heading < 135:
+            return XOdometry.EAST
+        elif heading >= 135 and heading < 225:
+            return XOdometry.SOUTH
+        else:
+            return XOdometry.WEST
+
+    def filter_distance_by_angle(self, rotation, tolerance):
+        # Returns True if angle is valid
+        heading = rotation
+
+        heading = rotation % 360.0
+        if heading >= 360.0:
+            heading = 0.0
+            
+        if heading < 0.0 or heading >= 360.0:
+            raise ValueError("filter_distance({}, {}): Heading must be in the range [0, 360).".format(heading, rotation))
+        
+        if heading > 360.0 - tolerance or heading < tolerance:
+            return True
+        elif heading > 90.0 - tolerance and heading < 90.0 + tolerance:
+            return True
+        elif heading > 180.0 - tolerance and heading < 180.0 + tolerance:
+            return True
+        elif heading > 270.0 - tolerance and heading < 270.0 + tolerance:
+            return True
+        return False
+
+    def filter_distance_by_location(self, direction, x, y, rotation):
+        compass = self.compass_heading(rotation)
+        if direction == XOdometry.EFORWARD:
+            if compass == XOdometry.NORTH: return x > 1800
+            elif compass == XOdometry.EAST: return y > 1800
+            elif compass == XOdometry.SOUTH: return x < 1800
+            elif compass == XOdometry.WEST: return y < 1800
+        elif direction == XOdometry.ERIGHT:
+            if compass == XOdometry.NORTH: return y > 1600
+            elif compass == XOdometry.EAST: return x < 1800
+            elif compass == XOdometry.SOUTH: return y < 2000
+            elif compass == XOdometry.WEST: return x > 1800
+        elif direction == XOdometry.EBACK:
+            if compass == XOdometry.NORTH: return x < 1800
+            elif compass == XOdometry.EAST: return y < 1800
+            elif compass == XOdometry.SOUTH: return x > 1800
+            elif compass == XOdometry.WEST: return y > 1800
+        elif direction == XOdometry.ELEFT:
+            if compass == XOdometry.NORTH: return y < 1600
+            elif compass == XOdometry.EAST: return x > 1800
+            elif compass == XOdometry.SOUTH: return y > 2000
+            elif compass == XOdometry.WEST: return x < 1800
+
+        return False
+
+    def get_distance(self, sensor: DistanceWrapper, previous_values: List[float], rotation, angle_threshold = 1, sensor_dirction = EFORWARD):
+
+        if not self.filter_distance_by_angle(rotation, angle_threshold):
+            # LAST_VALID_LEFT_DISTANCE = -1
+            return XOdometry.DistanceError_AngleFiltered
+
+        if self.ENABLE_LOCATION_FILTER and not self.filter_distance_by_location(sensor_dirction, self.X, self.Y, rotation):
+            # self.LAST_VALID_LEFT_DISTANCE = -1
+            return XOdometry.DistanceError_LocationFiltered
+
+        new_timestamp = sensor.timestamp()
+
+        if new_timestamp <= previous_values[1]:
+            return XOdometry.DistanceError_NotUpdated
+
+        new_value = sensor.get_distance()
+
+        if new_value < 0:
+            return new_value
+
+        previous_values[0] = new_value
+        previous_values[1] = new_timestamp
+
+        return new_value
+
+    def odom_print(self):
+        if not QUIET_MODE:
+            print("X: {:4.0f}/{:0.1f}, Y: {:4.0f}/{:0.1f}, H: {:3.2f}, B: {:.0f}/{:.0f}, L: {:.0f}, R: {:.0f}".format(self.X, self.Pxx, self.Y, self.Pyy, self.THETA % 360.0, back_distance1.object_distance(MM), back_distance2.object_distance(MM), left_distance.object_distance(MM), right_distance.object_distance(MM)))
+
+    def odom_thread(self):
+        self.THETA = inertial.rotation()
+        self.initialize_wheels()
+        self.initialize_rotation()
+        self.initialize_distances()
+        self.filter = KalmanXY(self.X, self.Y)
+
+        count = 0
+        while True:
+            self.X, self.Y, self.THETA = self.predict_wheels()
+            self.filter.predict(self.X - self.filter.X, self.Y - self.filter.Y)
+
+            # the walls can only be guaranteed unobstructed during autonomous
+            compass = self.compass_heading(self.THETA)
+
+            if self.ENABLE_BACK_DISTANCE:
+                meas_back1_distance = -1
+                meas_back2_distance = -1
+                meas_back_avg_distance = 0
+                if self.ENABLE_BACK1_DISTANCE:
+                    meas_back1_distance = self.get_distance(back_distance1, self.previous_back1_distance, self.THETA, 3, XOdometry.EBACK)
+                    if meas_back1_distance >= 0:
+                        meas_back_avg_distance += meas_back1_distance
+                    if meas_back1_distance >= 0: self.LAST_VALID_BACK1_DISTANCE = meas_back1_distance
+                if self.ENABLE_BACK2_DISTANCE:
+                    meas_back2_distance = self.get_distance(back_distance2, self.previous_back2_distance, self.THETA, 3, XOdometry.EBACK)
+                    if meas_back2_distance >= 0: meas_back_avg_distance += meas_back2_distance
+                    if meas_back2_distance >= 0: self.LAST_VALID_BACK2_DISTANCE = meas_back2_distance
+                if meas_back1_distance > 0 and meas_back2_distance > 0: meas_back_avg_distance = meas_back_avg_distance / 2
+
+                if meas_back_avg_distance > 0:
+                    meas_back_avg_distance -= (BACK_DISTANCE1_FROM_BACK + BACK_DISTANCE2_FROM_BACK) / 2 # subtract distance to back of robot
+                    meas_back_avg_distance += HIDDEN_PERIMITER + ROBOT_LENGTH / 2 # add the hidden perimeter and half the robot length
+                    if self.FORCE_LOCATION_RESET:
+                        self.X = meas_back_avg_distance
+                        self.filter.reset(self.X, self.Y)
+                    elif compass == XOdometry.NORTH:
+                        self.X, self.Y = self.filter.update_x(meas_back_avg_distance)
+                    elif compass == XOdometry.SOUTH:
+                        self.X, self.Y = self.filter.update_x(3600.0 - meas_back_avg_distance)
+                    elif compass == XOdometry.WEST:
+                        self.X, self.Y = self.filter.update_y(3600.0 - meas_back_avg_distance)
+                    elif compass == XOdometry.EAST:
+                        self.X, self.Y = self.filter.update_y(meas_back_avg_distance)
+
+            Y_Right = None
+            if self.ENABLE_RIGHT_DISTANCE:
+                meas_right_distance = self.get_distance(right_distance, self.previous_right_distance, self.THETA, 1, XOdometry.ERIGHT)
+                if meas_right_distance >= 0:
+                    meas_right_distance += HIDDEN_PERIMITER + ROBOT_WIDTH / 2 - RIGHT_DISTANCE_FROM_RIGHT
+                    if self.FORCE_LOCATION_RESET:
+                        Y_Right = 3600.0 - meas_right_distance
+                    elif compass == XOdometry.NORTH:
+                        self.X, self.Y = self.filter.update_y(3600.0 - meas_right_distance)
+                    elif compass == XOdometry.SOUTH:
+                        self.X, self.Y = self.filter.update_y(meas_right_distance)
+                    elif compass == XOdometry.WEST:
+                        self.X, self.Y = self.filter.update_x(3600.0 - meas_right_distance)
+                    elif compass == XOdometry.EAST:
+                        self.X, self.Y = self.filter.update_x(meas_right_distance)
+
+            Y_Left = None
+            if self.ENABLE_LEFT_DISTANCE:
+                meas_left_distance = self.get_distance(left_distance, self.previous_left_distance, self.THETA, 1, XOdometry.ELEFT)
+                if meas_left_distance >= 0:
+                    meas_left_distance += HIDDEN_PERIMITER + ROBOT_WIDTH / 2 - LEFT_DISTANCE_FROM_LEFT
+                    if self.FORCE_LOCATION_RESET:
+                        Y_Left = meas_left_distance
+                    elif compass == XOdometry.NORTH:
+                        self.X, self.Y = self.filter.update_y(meas_left_distance)
+                    elif compass == XOdometry.SOUTH:
+                        self.X, self.Y = self.filter.update_y(3600.0 - meas_left_distance)
+                    elif compass == XOdometry.WEST:
+                        self.X, self.Y = self.filter.update_x(meas_left_distance)
+                    elif compass == XOdometry.EAST:
+                        self.X, self.Y = self.filter.update_x(3600.0 - meas_left_distance)
+
+            if self.FORCE_LOCATION_RESET:
+                if Y_Right is not None and Y_Left is not None:
+                    self.Y = (Y_Right + Y_Left) / 2.0
+                elif Y_Right is not None:
+                    self.Y = Y_Right
+                elif Y_Left is not None:
+                    self.Y = Y_Left
+                self.filter.reset(self.X, self.Y)
+                self.FORCE_LOCATION_RESET = False
+
+            self.Pxx, self.Pyy = self.filter.Pxx, self.filter.Pyy
+
+            if count % 200 == 0:
+                self.odom_print()
+                # print("{\"x\":1000.0,\"y\":0.0,\"h\":0.0,\"m\":{\"left_drive\":35.0,\"right_drive\":41.0}}")
+
+            count += 1
+
+            wait(10, MSEC)
+    
+odom = XOdometry()
 ### MOTOR COMMAND VELOCITIES
 
-dt = XDriveTrain(left_front_motor, left_back_motor, right_front_motor, right_back_motor, inertial, location_callback)
+dt = XDriveTrain(left_front_motor, left_back_motor, right_front_motor, right_back_motor, inertial, odom.location_callback)
 
 def set_quiet_mode(quiet):
     global QUIET_MODE
@@ -558,14 +1113,6 @@ def set_quiet_mode(quiet):
     dt.set_quiet_mode(quiet)
 
 ### DISTANCE SENSORS
-
-ENABLE_BACK_DISTANCE = True
-ENABLE_BACK1_DISTANCE = True
-ENABLE_BACK2_DISTANCE = True
-ENABLE_LEFT_DISTANCE = not (AUTON_SEQUENCE == AutonSequence.MATCH_RIGHT)
-ENABLE_RIGHT_DISTANCE = not (AUTON_SEQUENCE == AutonSequence.MATCH_RIGHT)
-ENABLE_LOCATION_FILTER = False
-FORCE_LOCATION_RESET = True
 
 # + 30mm at 1440mm
 # + 22mm at 950mm
@@ -637,544 +1184,6 @@ def average_back_distance(samples=10):
     print("back1 {} back2 {} back distance {} angle {}".format(back1_distance, back2_distance, total_distance, total_angle))
     return total_distance, total_angle
 
-def motor_distance_step(current, previous):
-    lf = current[0] - previous[0]
-    lb = current[1] - previous[1]
-    rf = current[2] - previous[2]
-    rb = current[3] - previous[3]
-    forward = (lf + lb + rf + rb) / 4
-    side = (lf - rf - lb + rb) / 4
-    forward = forward * DRIVETRAIN_EXTERNAL_GEAR_RATIO * DRIVETRAIN_WHEEL_SIZE * sqrt(2) * dt.FORWARD_EFFICIENCY
-    side = side * DRIVETRAIN_EXTERNAL_GEAR_RATIO * DRIVETRAIN_WHEEL_SIZE * sqrt(2)
-    return forward, side
-
-def tracking_distance_step(current, previous):
-    if current[0] is None: forward = None
-    else:
-        forward = current[0] - previous[0]
-    if current[1] is None: side = None
-    else:
-        side = current[1] - previous[1]
-
-    if forward is not None:
-        forward = forward * ROTATION_FWD_WHEEL_SIZE
-    if side is not None:
-        side = side * ROTATION_SIDE_WHEEL_SIZE
-    return forward, side
-
-def motor_total_distance():
-    lf = left_front_motor.position(TURNS)
-    lb = left_back_motor.position(TURNS)
-    rf = right_front_motor.position(TURNS)
-    rb = right_back_motor.position(TURNS)
-    forward, side = motor_distance_step([lf, lb, rf, rb], [0, 0, 0, 0])
-    return forward, side
-
-class KalmanXY:
-    def __init__(self, X0=0.0, Y0=0.0):
-        # State
-        self.X = X0
-        self.Y = Y0
-
-        # Covariance matrix P
-        self.Pxx = 1.0
-        self.Pxy = 0.0
-        self.Pyy = 1.0
-
-        # Process noise (tune these)
-        self.Qx = 0.01
-        self.Qy = 0.01
-
-        # Measurement noise (tune per sensor)
-        self.Rx = 2.0
-        self.Ry = 2.0
-
-    def reset(self, X0=0.0, Y0=0.0):
-        self.X = X0
-        self.Y = Y0
-        self.Pxx = 1.0
-        self.Pxy = 0.0
-        self.Pyy = 1.0
-
-    def predict(self, dx, dy):
-        # State prediction
-        self.X += dx
-        self.Y += dy
-
-        # Covariance prediction
-        self.Pxx += self.Qx
-        self.Pyy += self.Qy
-        # Pxy stays the same (no cross‑coupling in motion model)
-
-    def update_x(self, meas_x):
-        # Innovation covariance
-        S = self.Pxx + self.Rx
-
-        # Kalman gain
-        Kx = self.Pxx / S
-        Ky = self.Pxy / S
-
-        # Update state
-        self.X += Kx * (meas_x - self.X)
-        self.Y += Ky * (meas_x - self.Y)
-
-        # Update covariance
-        self.Pxx = (1 - Kx) * self.Pxx
-        self.Pxy = (1 - Kx) * self.Pxy
-        self.Pyy = self.Pyy - Ky * self.Pxy
-
-        return self.X, self.Y
-
-    def update_y(self, meas_y):
-        S = self.Pyy + self.Ry
-
-        Kx = self.Pxy / S
-        Ky = self.Pyy / S
-
-        self.X += Kx * (meas_y - self.X)
-        self.Y += Ky * (meas_y - self.Y)
-
-        self.Pyy = (1 - Ky) * self.Pyy
-        self.Pxy = (1 - Ky) * self.Pxy
-        self.Pxx = self.Pxx - Kx * self.Pxy
-
-        return self.X, self.Y
-
-previous_motor_positions = [0.0, 0.0, 0.0, 0.0]
-previous_rotation_positions = [0.0, 0.0]
-previous_theta = THETA
-previous_back_distance = [0.0, 0]
-previous_left_distance = [0.0, 0]
-previous_right_distance = [0.0, 0]
-
-def initialize_wheels():
-    global previous_motor_positions, previous_theta
-
-    previous_motor_positions = [left_front_motor.position(TURNS), left_back_motor.position(TURNS), right_front_motor.position(TURNS), right_back_motor.position(TURNS)]
-    previous_theta = THETA
-
-def initialize_rotation():
-    global previous_rotation_positions
-
-    if rotation_fwd.installed():
-        rotation_fwd.set_position(0, TURNS)
-        rotation_fwd_position = rotation_fwd.position(TURNS)
-    else:
-        rotation_fwd_position = None
-
-    if rotation_side.installed():
-        rotation_side.set_position(0, TURNS)
-        rotation_side_position = rotation_side.position(TURNS)
-    else:
-        rotation_side_position = None
-
-    previous_rotation_positions = [rotation_fwd_position, rotation_side_position]
-
-def initialize_distances():
-    global previous_back_distance, previous_left_distance, previous_right_distance
-
-    previous_back_distance[0] = (back_distance1.object_distance(MM) + back_distance2.object_distance(MM)) / 2.0
-    previous_back_distance[1] = max(back_distance1.timestamp(), back_distance2.timestamp())
- 
-    previous_left_distance[0] = left_distance.object_distance(MM)
-    previous_left_distance[1] = left_distance.timestamp()
-
-    previous_right_distance[0] = right_distance.object_distance(MM)
-    previous_right_distance[1] = right_distance.timestamp()
-
-def filter_distance_by_angle(rotation, tolerance):
-    # Returns True if angle is valid
-    heading = rotation
-
-    heading = rotation % 360.0
-    if heading >= 360.0:
-        heading = 0.0
-        
-    if heading < 0.0 or heading >= 360.0:
-        raise ValueError("filter_distance({}, {}): Heading must be in the range [0, 360).".format(heading, rotation))
-    
-    if heading > 360.0 - tolerance or heading < tolerance:
-        return True
-    elif heading > 90.0 - tolerance and heading < 90.0 + tolerance:
-        return True
-    elif heading > 180.0 - tolerance and heading < 180.0 + tolerance:
-        return True
-    elif heading > 270.0 - tolerance and heading < 270.0 + tolerance:
-        return True
-    return False
-
-EFORWARD = 0
-ERIGHT = 1
-EBACK = 2
-ELEFT = 3
-
-NORTH = 0
-EAST = 1
-SOUTH = 2
-WEST = 3
-
-def compass_heading(rotation: float) -> int:
-    heading = rotation
-
-    heading = rotation % 360.0
-    # needed as floating vs. double precision module may produce slightly different results for values very close to 360.0
-    if heading >= 360.0:
-        heading -= 360.0
-
-    if heading >= 315 or heading < 45:
-        return NORTH
-    elif heading >= 45 and heading < 135:
-        return EAST
-    elif heading >= 135 and heading < 225:
-        return SOUTH
-    else:
-        return WEST
-
-def filter_distance_by_location(direction, x, y, rotation):
-    compass = compass_heading(rotation)
-    if direction == EFORWARD:
-        if compass == NORTH: return x > 1800
-        elif compass == EAST: return y > 1800
-        elif compass == SOUTH: return x < 1800
-        elif compass == WEST: return y < 1800
-    elif direction == ERIGHT:
-        if compass == NORTH: return y > 1600
-        elif compass == EAST: return x < 1800
-        elif compass == SOUTH: return y < 2000
-        elif compass == WEST: return x > 1800
-    elif direction == EBACK:
-        if compass == NORTH: return x < 1800
-        elif compass == EAST: return y < 1800
-        elif compass == SOUTH: return x > 1800
-        elif compass == WEST: return y > 1800
-    elif direction == ELEFT:
-        if compass == NORTH: return y < 1600
-        elif compass == EAST: return x > 1800
-        elif compass == SOUTH: return y > 2000
-        elif compass == WEST: return x < 1800
-
-    return False
-
-LAST_VALID_BACK_DISTANCE1 = -1
-LAST_VALID_BACK_DISTANCE2 = -1
-def get_back_distance(rotation):
-    global previous_back_distance, LAST_VALID_BACK_DISTANCE1, LAST_VALID_BACK_DISTANCE2
-
-    if not filter_distance_by_angle(rotation, 3):
-        # LAST_VALID_BACK_DISTANCE1 = -1
-        # LAST_VALID_BACK_DISTANCE2 = -1
-        return None
-
-    if ENABLE_LOCATION_FILTER and not filter_distance_by_location(EBACK, X, Y, rotation):
-        # LAST_VALID_BACK_DISTANCE1 = -1
-        # LAST_VALID_BACK_DISTANCE2 = -1
-        return None
-
-    new_back1_timestamp = back_distance1.timestamp()
-    new_back2_timestamp = back_distance2.timestamp()
-
-    max_timestamp = max(new_back1_timestamp, new_back2_timestamp)
-
-    if max_timestamp > previous_back_distance[1]:
-        back1_present = back_distance1.installed()
-        back2_present = back_distance2.installed()
-        back1_detected = back_distance1.is_object_detected()
-        back2_detected = back_distance2.is_object_detected()
-        if not back1_present and not back2_present:
-            # LAST_VALID_BACK_DISTANCE1 = -1
-            # LAST_VALID_BACK_DISTANCE2 = -1
-            return None
-        if (back1_present and not back1_detected) or (back2_present and not back2_detected):
-            # LAST_VALID_BACK_DISTANCE1 = -1
-            # LAST_VALID_BACK_DISTANCE2 = -1
-            return None
-        new_back1 = back_distance1.object_distance(MM) - BACK_DISTANCE1_CLOSE_ERROR
-        new_back2 = back_distance2.object_distance(MM) - BACK_DISTANCE2_CLOSE_ERROR
-        if back1_present and ENABLE_BACK1_DISTANCE and back2_present and ENABLE_BACK2_DISTANCE:
-            new_back_distance_value = (new_back1 + new_back2) / 2.0
-        elif back1_present and ENABLE_BACK1_DISTANCE:
-            new_back_distance_value = new_back1
-        elif back2_present and ENABLE_BACK2_DISTANCE:
-            new_back_distance_value = new_back2
-        else:
-            # LAST_VALID_BACK_DISTANCE1 = -1
-            # LAST_VALID_BACK_DISTANCE2 = -1
-            return None
-        new_back_distance_timestamp = max_timestamp
-        previous_back_distance[0] = new_back_distance_value
-        previous_back_distance[1] = new_back_distance_timestamp
-
-        if new_back_distance_value > 1700.0:
-            # LAST_VALID_BACK_DISTANCE1 = -1
-            # LAST_VALID_BACK_DISTANCE2 = -1
-            return None
-
-        LAST_VALID_BACK_DISTANCE1 = new_back1
-        LAST_VALID_BACK_DISTANCE2 = new_back2
-
-        return new_back_distance_value
-
-    return None
-
-def logistic_error(d, error, midpoint = 175, steepness = 0.05):
-    # Midpoint at 175mm, steepness 0.05
-    # Uses math.exp instead of np.exp
-    return error / (1 + math.exp(steepness * (d - midpoint)))
-
-LAST_VALID_LEFT_DISTANCE = -1
-def get_left_distance(rotation):
-    global previous_left_distance, LAST_VALID_LEFT_DISTANCE
-
-    if not filter_distance_by_angle(rotation, 1):
-        # LAST_VALID_LEFT_DISTANCE = -1
-        return None
-
-    if ENABLE_LOCATION_FILTER and not filter_distance_by_location(ELEFT, X, Y, rotation):
-        # LAST_VALID_LEFT_DISTANCE = -1
-        return None
-
-    loader_offset = 0
-    if AUTON_SEQUENCE == AutonSequence.MATCH_RIGHT:
-        if X >= 260 and X <=360:
-            loader_offset = 90
-
-    new_left_timestamp = left_distance.timestamp()
-
-    if new_left_timestamp > previous_left_distance[1]:
-        if not left_distance.is_object_detected():
-            # LAST_VALID_LEFT_DISTANCE = -1
-            return None
-        new_left_distance_value = left_distance.object_distance(MM)
-        try:
-            error = logistic_error(new_left_distance_value, LEFT_DISTANCE_CLOSE_ERROR)
-        except Exception as e:
-            # print("Error calculating logistic error: {}, {}".format(e, new_left_distance_value))
-            error = 0
-        new_left_distance_value -= error
-        new_left_distance_timestamp = new_left_timestamp
-        previous_left_distance[0] = new_left_distance_value
-        previous_left_distance[1] = new_left_distance_timestamp
-
-        if new_left_distance_value > 1700.0:
-            # LAST_VALID_LEFT_DISTANCE = -1
-            return None
-
-        # print(new_left_distance_value)
-        LAST_VALID_LEFT_DISTANCE = new_left_distance_value
-
-        return new_left_distance_value + loader_offset
-
-    return None
-
-LAST_VALID_RIGHT_DISTANCE = -1
-def get_right_distance(rotation):
-    global previous_right_distance, LAST_VALID_RIGHT_DISTANCE
-
-    if not filter_distance_by_angle(rotation, 1):
-        # LAST_VALID_RIGHT_DISTANCE = -1
-        return None
-
-    if ENABLE_LOCATION_FILTER and not filter_distance_by_location(ERIGHT, X, Y, rotation):
-        # LAST_VALID_RIGHT_DISTANCE = -1
-        return None
-
-    loader_offset = 0
-    if AUTON_SEQUENCE == AutonSequence.MATCH_RIGHT:
-        if X >= 260 and X <=360:
-            loader_offset = 90
-
-    new_right_timestamp = right_distance.timestamp()
-
-    if new_right_timestamp > previous_right_distance[1]:
-        if not right_distance.is_object_detected():
-            # LAST_VALID_RIGHT_DISTANCE = -1
-            return None
-        new_right_distance_value = right_distance.object_distance(MM)
-        if new_right_distance_value < RIGHT_DISTANCE_CLOSE_TRANSITION:
-            # Close region just subtract the close value
-            new_right_distance_value -= RIGHT_DISTANCE_CLOSE_ERROR
-        else:
-            # Far region apply linear interpolation using delta between far and close transition and far and close errors
-            slope = (RIGHT_DISTANCE_FAR_ERROR - RIGHT_DISTANCE_CLOSE_ERROR) / (RIGHT_DISTANCE_FAR_TRANSITION - RIGHT_DISTANCE_CLOSE_TRANSITION)
-            error = (new_right_distance_value - RIGHT_DISTANCE_CLOSE_TRANSITION) * slope
-            new_right_distance_value -= error
-        new_right_distance_timestamp = new_right_timestamp
-        previous_right_distance[0] = new_right_distance_value
-        previous_right_distance[1] = new_right_distance_timestamp
-
-        if new_right_distance_value > 1700.0:
-            # LAST_VALID_RIGHT_DISTANCE = -1
-            return None
-
-        # print(new_right_distance_value)
-        LAST_VALID_RIGHT_DISTANCE = new_right_distance_value
-
-        return new_right_distance_value + loader_offset
-
-    return None
-
-def predict_wheels():
-    global previous_motor_positions, previous_theta
-    global previous_rotation_positions
-
-    current_motor_positions = [left_front_motor.position(TURNS), left_back_motor.position(TURNS), right_front_motor.position(TURNS), right_back_motor.position(TURNS)]
-
-    if not rotation_fwd.installed(): rotation_fwd_position = None
-    else: rotation_fwd_position = rotation_fwd.position(TURNS)
-
-    if not rotation_side.installed(): rotation_side_position = None
-    else: rotation_side_position = rotation_side.position(TURNS)
-
-    current_rotation_positions = [rotation_fwd_position, rotation_side_position]
-    current_theta = inertial.rotation()
-
-    delta_motor_forward, delta_motor_side = motor_distance_step(current_motor_positions, previous_motor_positions)
-    delta_rotation_forward, delta_rotation_side = tracking_distance_step(current_rotation_positions, previous_rotation_positions)
-    if delta_rotation_forward is not None:
-        delta_forward = delta_rotation_forward
-        # positive right offset means recorded radius is smaller than at center of robot for right turns, so add offset
-        forward_offset = ROTATION_FWD_WHEEL_OFFSET
-    else:
-        delta_forward = delta_motor_forward
-        forward_offset = 0.0
-
-    if delta_rotation_side is not None:
-        delta_side = delta_rotation_side
-        # positive forward offset means recorded radius is smaller than at center of robot for forward turns, so subtract offset
-        side_offset = ROTATION_SIDE_WHEEL_OFFSET
-    else:
-        delta_side = delta_motor_side
-        side_offset = 0.0
-    delta_theta = current_theta - previous_theta
-
-    if delta_theta == 0.0:
-        to_global_rotation_angle = current_theta
-        delta_local_x = delta_forward
-        delta_local_y = delta_side
-    else:
-        r_forward = forward_offset + delta_forward / radians(delta_theta) # mm
-        r_side = -side_offset + delta_side / radians(delta_theta) # mm
-
-        to_global_rotation_angle = current_theta + delta_theta / 2.0
-        delta_local_x = r_forward * 2.0 * sin(radians(delta_theta) / 2.0)
-        delta_local_y = r_side * 2.0 * sin(radians(delta_theta) / 2.0)
-
-    delta_global_x = delta_local_x * cos(radians(to_global_rotation_angle)) - delta_local_y * sin(radians(to_global_rotation_angle))
-    delta_global_y = delta_local_x * sin(radians(to_global_rotation_angle)) + delta_local_y * cos(radians(to_global_rotation_angle))
-
-    previous_motor_positions = current_motor_positions
-    previous_rotation_positions = current_rotation_positions
-    previous_theta = current_theta
-
-    new_X = X + delta_global_x
-    new_Y = Y + delta_global_y
-    new_theta = current_theta
-
-    return new_X, new_Y, new_theta
-
-def odom_distance_enable(back, left, right, back1 = True, back2 = True):
-    global ENABLE_BACK_DISTANCE, ENABLE_LEFT_DISTANCE, ENABLE_RIGHT_DISTANCE, ENABLE_BACK1_DISTANCE, ENABLE_BACK2_DISTANCE
-
-    ENABLE_BACK_DISTANCE = back
-    ENABLE_LEFT_DISTANCE = left
-    ENABLE_RIGHT_DISTANCE = right
-    ENABLE_BACK1_DISTANCE = back1
-    ENABLE_BACK2_DISTANCE = back2
-
-def odom_location_filter_enable(enable):
-    global ENABLE_LOCATION_FILTER
-    ENABLE_LOCATION_FILTER = enable
-
-def odom_print():
-    if not QUIET_MODE:
-        print("X: {:4.0f}/{:0.1f}, Y: {:4.0f}/{:0.1f}, H: {:3.2f}, B: {:.0f}/{:.0f}, L: {:.0f}, R: {:.0f}".format(X, Pxx, Y, Pyy, THETA % 360.0, back_distance1.object_distance(MM), back_distance2.object_distance(MM), left_distance.object_distance(MM), right_distance.object_distance(MM)))
-
-def odom_thread():
-    global X, Y, THETA, Pxx, Pyy
-    global FORCE_LOCATION_RESET
-    THETA = inertial.rotation()
-    initialize_wheels()
-    initialize_rotation()
-    initialize_distances()
-    filter = KalmanXY(X, Y)
-
-    count = 0
-    while True:
-        X, Y, THETA = predict_wheels()
-        filter.predict(X - filter.X, Y - filter.Y)
-
-        # the walls can only be guaranteed unobstructed during autonomous
-        compass = compass_heading(THETA)
-
-        if ENABLE_BACK_DISTANCE:
-            meas_back_distance = get_back_distance(THETA)
-            if meas_back_distance is not None:
-                meas_back_distance -= (BACK_DISTANCE1_FROM_BACK + BACK_DISTANCE2_FROM_BACK) / 2 # subtract distance to back of robot
-                meas_back_distance += HIDDEN_PERIMITER + ROBOT_LENGTH / 2 # add the hidden perimeter and half the robot length
-                if FORCE_LOCATION_RESET:
-                    X = meas_back_distance
-                    filter.reset(X, Y)
-                elif compass == NORTH:
-                    X, Y = filter.update_x(meas_back_distance)
-                elif compass == SOUTH:
-                    X, Y = filter.update_x(3600.0 - meas_back_distance)
-                elif compass == WEST:
-                    X, Y = filter.update_y(3600.0 - meas_back_distance)
-                elif compass == EAST:
-                    X, Y = filter.update_y(meas_back_distance)
-
-        Y_Right = None
-        if ENABLE_RIGHT_DISTANCE:
-            meas_right_distance = get_right_distance(THETA)
-            if meas_right_distance is not None:
-                meas_right_distance += HIDDEN_PERIMITER + ROBOT_WIDTH / 2 - RIGHT_DISTANCE_FROM_RIGHT
-                if FORCE_LOCATION_RESET:
-                    Y_Right = 3600.0 - meas_right_distance
-                elif compass == NORTH:
-                    X, Y = filter.update_y(3600.0 - meas_right_distance)
-                elif compass == SOUTH:
-                    X, Y = filter.update_y(meas_right_distance)
-                elif compass == WEST:
-                    X, Y = filter.update_x(3600.0 - meas_right_distance)
-                elif compass == EAST:
-                    X, Y = filter.update_x(meas_right_distance)
-
-        Y_Left = None
-        if ENABLE_LEFT_DISTANCE:
-            meas_left_distance = get_left_distance(THETA)
-            if meas_left_distance is not None:
-                meas_left_distance += HIDDEN_PERIMITER + ROBOT_WIDTH / 2 - LEFT_DISTANCE_FROM_LEFT
-                if FORCE_LOCATION_RESET:
-                    Y_Left = meas_left_distance
-                elif compass == NORTH:
-                    X, Y = filter.update_y(meas_left_distance)
-                elif compass == SOUTH:
-                    X, Y = filter.update_y(3600.0 - meas_left_distance)
-                elif compass == WEST:
-                    X, Y = filter.update_x(meas_left_distance)
-                elif compass == EAST:
-                    X, Y = filter.update_x(3600.0 - meas_left_distance)
-
-        if FORCE_LOCATION_RESET:
-            if Y_Right is not None and Y_Left is not None:
-                Y = (Y_Right + Y_Left) / 2.0
-            elif Y_Right is not None:
-                Y = Y_Right
-            elif Y_Left is not None:
-                Y = Y_Left
-            filter.reset(X, Y)
-            FORCE_LOCATION_RESET = False
-
-        Pxx, Pyy = filter.Pxx, filter.Pyy
-
-        if count % 200 == 0:
-            odom_print()
-            # print("{\"x\":1000.0,\"y\":0.0,\"h\":0.0,\"m\":{\"left_drive\":35.0,\"right_drive\":41.0}}")
-
-        count += 1
-
-        wait(10, MSEC)
-
 def turns():
     wait(100, MSEC)
     dt.turn_for(-10, speed = 50)
@@ -1235,7 +1244,7 @@ def center_on_cup():
     theta_history_values = [0.0] * THETA_HISTORY_CAPACITY
     theta_history_next = 0
     theta_history_count = 0
-    target_heading = THETA
+    target_heading = odom.THETA
     error_accum = 0.0
     have_target = False
     ALPHA = 0.3
@@ -1248,13 +1257,13 @@ def center_on_cup():
 
             snapshot_time = brain.timer.time(MSEC)
             theta_history_times[theta_history_next] = snapshot_time
-            theta_history_values[theta_history_next] = THETA
+            theta_history_values[theta_history_next] = odom.THETA
             theta_history_next = (theta_history_next + 1) % THETA_HISTORY_CAPACITY
             if theta_history_count < THETA_HISTORY_CAPACITY:
                 theta_history_count += 1
 
             target_sample_time = snapshot_time - CAMERA_LAG_MS
-            delayed_THETA = THETA
+            delayed_THETA = odom.THETA
             for history_age in range(theta_history_count):
                 history_index = (theta_history_next - 1 - history_age) % THETA_HISTORY_CAPACITY
                 if theta_history_times[history_index] <= target_sample_time:
@@ -1395,16 +1404,17 @@ def log_odom():
             dt.last_fwd_command,
             dt.last_strafe_command,
             dt.last_turn_command,
-            previous_rotation_positions[0] * ROTATION_FWD_WHEEL_SIZE if previous_rotation_positions[0] is not None else 0.0,
-            previous_rotation_positions[1] * ROTATION_FWD_WHEEL_SIZE if previous_rotation_positions[1] is not None else 0.0,
-            previous_left_distance[0],
-            previous_right_distance[0],
-            previous_back_distance[0],
-            X,
-            Y,
-            THETA,
-            Pxx,
-            Pyy]
+            odom.previous_rotation_positions[0] * ROTATION_FWD_WHEEL_SIZE if odom.previous_rotation_positions[0] is not None else 0.0,
+            odom.previous_rotation_positions[1] * ROTATION_FWD_WHEEL_SIZE if odom.previous_rotation_positions[1] is not None else 0.0,
+            odom.previous_left_distance[0],
+            odom.previous_right_distance[0],
+            odom.previous_back1_distance[0],
+            odom.previous_back2_distance[0],
+            odom.X,
+            odom.Y,
+            odom.THETA,
+            odom.Pxx,
+            odom.Pyy]
 
         log.append(entry)
         wait (10, MSEC)
@@ -1545,17 +1555,17 @@ def autonomous_skills_cup_from_floor():
     print("--- Autonomous Skills Cup from Floor ---")
     claw.open()
     print("--- Drive Forward to X = 900")
-    odom_distance_enable(True, True, False)
+    odom.odom_distance_enable(True, True, False)
     dt.drive_to_xy(900.0, 2100.0, False, 66, heading = 0)
 
     print("--- Drive Sideways to Y = 2400")
-    odom_distance_enable(False, False, True)
+    odom.odom_distance_enable(False, False, True)
     # TODO: Left and right distance sensors is current main difference between sequence 1 and 2
     # robot strafes right slightly when driving forward
     dt.drive_to_xy(900.0, 2390.0, True, 66, heading = 0)
     dt.turn_to(0, 66)
     dt.drive_to_xy(900.0, 2390.0, True, 66, heading = 0)
-    odom_distance_enable(True, False, True)
+    odom.odom_distance_enable(True, False, True)
 
     print("--- Detecting cup")
     cup_detected = False
@@ -1584,15 +1594,15 @@ def autonomous_skills_cup_from_floor_recover(sequence):
     # set robot to same state as end of skills_turn_and_stack
     if (sequence == 1):
         # reverse back
-        odom_distance_enable(False, True, True)
+        odom.odom_distance_enable(False, True, True)
         dt.drive_to_xy(900, 2400, False, 66, heading = 0)
         # face back wall
-        odom_distance_enable(False, False, False)
+        odom.odom_distance_enable(False, False, False)
         dt.turn_to(180, 75)
-        odom_distance_enable(False, True, True)
+        odom.odom_distance_enable(False, True, True)
     if (sequence == 2):
         # reverse back
-        odom_distance_enable(False, True, True)
+        odom.odom_distance_enable(False, True, True)
         dt.drive_to_xy(900, 3000, False, 66, heading = 180)
         # recenter
         dt.turn_to(180, 75)
@@ -1606,9 +1616,9 @@ def autonomous_skills_turn_and_stack():
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 180
-    odom_distance_enable(False, False, False)
+    odom.odom_distance_enable(False, False, False)
     dt.turn_for(target_heading - current_heading, 50)
-    odom_distance_enable(False, True, True)
+    odom.odom_distance_enable(False, True, True)
 
     print("--- Drive to goal")
     dt.drive_to_xy(770, 2400, False, 40, heading = 180, timeout = 1500)
@@ -1636,7 +1646,7 @@ def autonomous_skills_turn_and_stack():
                 cup_placed = True
         if (not cup_placed and detect_try == 1):
             # center of stack should be at (600, 2400)
-            heading_to_stack = math.degrees(math.atan2(Y - 2400, X - 600))
+            heading_to_stack = math.degrees(math.atan2(odom.Y - 2400, odom.X - 600))
             dt.turn_for(heading_to_stack, 33)
         if (detect_try == 2):
             # reset heading
@@ -1657,7 +1667,7 @@ def autonomous_skills_turn_and_stack():
 
 def autonomous_skills_cup_from_floor2():
     print("--- Autonomous Skills Pick Pin from Floor2 ---")
-    odom_distance_enable(False, True, True)
+    odom.odom_distance_enable(False, True, True)
     claw.open()
     dt.drive_to_xy(900.0, 3000, True, 66, heading = 180)
     dt.turn_to(180, 66)
@@ -1694,7 +1704,7 @@ def autonomous_skills_turn_and_stack2(short_stack = False):
         lift_height1 = 27
         lift_height2 = 25
         
-    odom_distance_enable(False, True, True)
+    odom.odom_distance_enable(False, True, True)
     lift.command(3)
     Thread(background_lift_thread, (lift_height1, Arm.CLAW_ARM_MID2))
     dt.drive_to_xy(900, 3000, False, 50, heading = 180)
@@ -1723,7 +1733,7 @@ def autonomous_skills_turn_and_stack2(short_stack = False):
                 cup_placed = True
         if (not cup_placed and detect_try == 1):
             # center of stack should be at (600, 2400)
-            heading_to_stack = math.degrees(math.atan2(Y - 2400, X - 600))
+            heading_to_stack = math.degrees(math.atan2(odom.Y - 2400, odom.X - 600))
             dt.turn_for(heading_to_stack, 33)
         if (detect_try == 2):
             # reset heading
@@ -1737,12 +1747,12 @@ def autonomous_skills_turn_and_stack2(short_stack = False):
 def autonomous_skills_pick_pin():
     print("--- Autonomous Skills Pick Pin ---")
     claw.open()
-    odom_distance_enable(False, True, False)
+    odom.odom_distance_enable(False, True, False)
     dt.drive_to_xy(900.0, 3600-300, True, 66, heading = 180)
     # dt.turn_for(180, 75)
-    odom_distance_enable(False, True, False)
+    odom.odom_distance_enable(False, True, False)
     dt.drive_to_xy(300.0, 3600-300, False, 66, heading = 180)
-    odom_distance_enable(False, True, False)
+    odom.odom_distance_enable(False, True, False)
     distance = claw_distance.object_distance(MM)
     print("Claw_distance: {}".format(distance))
     dt.drive_for(distance - 70, False, 33, heading = 180, timeout = 1000)
@@ -1753,9 +1763,10 @@ def autonomous_skills_pick_pin():
 
 def autonomous_skills_to_park():
     print("--- Autonomous Skills to Park ---")
+    odom.odom_distance_enable(False, False, False)
     dt.turn_to(0, 85)
-    odom_print()
-    odom_distance_enable(False, False, True)
+    odom.odom_print()
+    odom.odom_distance_enable(False, False, True)
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     if current_heading >0:
@@ -1764,11 +1775,11 @@ def autonomous_skills_to_park():
         current_heading = int((current_heading / 360.0) - 0.5) * 360.0
     print("Rounding heading: {}".format(current_heading))
     dt.drive_to_xy(900.0, 2100, True, 75, heading = current_heading)
-    odom_print()
-    odom_distance_enable(True, False, False, back2 = False)
+    odom.odom_print()
+    odom.odom_distance_enable(True, False, False, back2 = False)
     dt.drive_to_xy(1500, 2100, False, 75, heading = current_heading)
-    odom_print()
-    odom_distance_enable(False, False, False)
+    odom.odom_print()
+    odom.odom_distance_enable(False, False, False)
     dt.turn_for(-45, 75)
 
     lift.command(13)
@@ -1856,11 +1867,11 @@ def autonomous_left(as_skills = False):
     # wait(250, MSEC)
 
     print("--- Move 1")
-    odom_distance_enable(True, False, True)
-    dt.drive_to_xy(305, 1800, False, 66, heading = 0, timeout = 1000)
-    odom_print()
+    odom.odom_distance_enable(True, False, True)
+    dt.drive_to_xy(305, AUTON_START_Y, False, 66, heading = 0, timeout = 1000)
+    odom.odom_print()
     dt.drive_to_xy(305, 2400, True, 66, heading = 0, timeout = 2000)
-    odom_print()
+    odom.odom_print()
 
     print("--- Place Pin")
     dt.drive_for(170, False, 50, heading = 0, timeout = 1000)
@@ -1872,16 +1883,16 @@ def autonomous_left(as_skills = False):
     dt.drive_to_xy(310, 2400, True, 66, heading = 0, timeout = 500)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     lift.command(0)
-    odom_print()
+    odom.odom_print()
 
     print("--- Rotate to wall")
-    odom_print()
+    odom.odom_print()
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 180
-    odom_distance_enable(False, False, False)
+    odom.odom_distance_enable(False, False, False)
     dt.turn_for(target_heading - current_heading, 85, timeout = 1000)
-    odom_distance_enable(False, True, True)
+    odom.odom_distance_enable(False, True, True)
 
     print("--- Capture Cup")
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID3, 33)
@@ -1891,17 +1902,17 @@ def autonomous_left(as_skills = False):
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
 
     print("--- Rotate to goal")
-    odom_print()
+    odom.odom_print()
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 0
-    odom_distance_enable(False, False, False)
+    odom.odom_distance_enable(False, False, False)
     dt.turn_for(target_heading - current_heading, 85, timeout = 1500)
-    odom_distance_enable(True, False, True)
+    odom.odom_distance_enable(True, False, True)
     lift.command(11.5)
 
     print("--- Approach scoring position")
-    odom_print()
+    odom.odom_print()
     dt.drive_for(165, False, 50, heading = 0, timeout = 1000)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     wait(250, MSEC)
@@ -1914,13 +1925,13 @@ def autonomous_left(as_skills = False):
     print("--- Reverse and prepare for next move")
     dt.drive_to_xy(310, 2400, False, 66, heading = 0)
     Thread(claw_move2)
-    odom_distance_enable(True, False, False)
+    odom.odom_distance_enable(True, False, False)
     dt.drive_to_xy(310, 2100, True, 66, heading = 0)
 
 def autonomous_right():
     # place automonous code here
 
-    odom_distance_enable(True, False, False)
+    odom.odom_distance_enable(True, False, False)
     wait(10, MSEC)
 
     log = Logger(brain,
@@ -1932,7 +1943,7 @@ def autonomous_right():
             )
     log.start()
     
-    odom_print()
+    odom.odom_print()
     
     print("--- Toggle")
     Toggle.lower_toggle()
@@ -1946,10 +1957,10 @@ def autonomous_right():
     # wait(250,MSEC)
 
     print("--- Move 1")
-    dt.drive_to_xy(305, 1800, False, 66, heading = 0, timeout = 1000)
-    odom_print()
+    dt.drive_to_xy(305, AUTON_START_Y, False, 66, heading = 0, timeout = 1000)
+    odom.odom_print()
     dt.drive_to_xy(305, 1185, True, 66, heading = 0, timeout = 2000)
-    odom_print()
+    odom.odom_print()
 
     print("--- Place Pin")
     dt.drive_for(170, False, 33, heading = 0)
@@ -1962,16 +1973,16 @@ def autonomous_right():
     dt.drive_to_xy(310, 1200, True, 66, heading = 0, timeout = 500)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     lift.command(0)
-    odom_print()
+    odom.odom_print()
 
     print("--- Rotate to wall")
-    odom_print()
+    odom.odom_print()
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 180
-    odom_distance_enable(False, False, False)
+    odom.odom_distance_enable(False, False, False)
     dt.turn_for(target_heading - current_heading, 85, timeout = 1000)
-    odom_print()
+    odom.odom_print()
 
     print("--- Capture Cup")
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_MID3, 33)
@@ -1981,22 +1992,22 @@ def autonomous_right():
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
 
     print("--- Rotate to goal")
-    odom_print()
+    odom.odom_print()
     current_heading = inertial.rotation()
     print("Current heading: {}".format(current_heading))
     target_heading = 0
-    odom_distance_enable(False, False, False)
+    odom.odom_distance_enable(False, False, False)
     dt.turn_for(target_heading - current_heading, 85, timeout = 1000)
-    odom_distance_enable(True, False, False)
+    odom.odom_distance_enable(True, False, False)
     lift.command(11.5)
-    odom_print()
+    odom.odom_print()
 
     print("--- Approach scoring position")
-    odom_print()
+    odom.odom_print()
     dt.drive_for(165, False, 50, heading = 0, timeout = 1000)
     arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_POSITION, Arm.CLAW_ARM_DOWN)
     wait(250, MSEC)
-    odom_print()
+    odom.odom_print()
 
     print("--- Score Cup")
     lift.command(9)
@@ -2004,14 +2015,14 @@ def autonomous_right():
     wait(250, MSEC)
 
     print("--- Reverse and prepare for next move")
-    odom_print()
+    odom.odom_print()
     dt.drive_to_xy(305, 1200, False, 66, heading = 0)
     Thread(claw_move2)
     dt.drive_to_xy(305, 600, True, 100, heading = 0)
     dt.turn_for(-90, 100)
 
 def OnLoggerPositionCallbackDist():
-    return Y, X, LAST_VALID_BACK_DISTANCE1, LAST_VALID_BACK_DISTANCE2, LAST_VALID_LEFT_DISTANCE, LAST_VALID_RIGHT_DISTANCE
+    return odom.Y, odom.X, odom.LAST_VALID_BACK1_DISTANCE, odom.LAST_VALID_BACK2_DISTANCE, odom.LAST_VALID_LEFT_DISTANCE, odom.LAST_VALID_RIGHT_DISTANCE
 
 def autonomous_skills():
     log = Logger(brain,
@@ -2121,14 +2132,14 @@ def pre_autonomous():
 
     ROBOT_INITIALIZED = True
 
-    Thread(odom_thread)
+    Thread(odom.odom_thread)
 
     ui = PreAutonUI(brain, ALLIANCE_COLOR, AUTON_SEQUENCE)
     ui.start()
     while (not ROBOT_ENABLED):
         ALLIANCE_COLOR, AUTON_SEQUENCE = ui.get_current_selection()
         wait(10, MSEC)
-    odom_print()
+    odom.odom_print()
     ui.stop()
 
     motor_monitor = MotorMonitor(brain, all_motors, all_motor_names)
@@ -2413,7 +2424,7 @@ def user_control():
     # initialize_lift()
     Thread(auto_claw_thread)
     # Thread(odom_thread)
-    odom_distance_enable(False, False, False)
+    odom.odom_distance_enable(False, False, False)
 
     ROBOT_ENABLED = True
 
