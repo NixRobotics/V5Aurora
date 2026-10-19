@@ -744,11 +744,16 @@ class XOdometry():
     SOUTH = 2
     WEST = 3
 
+    DistanceError_Normal = 0
+    DistanceError_NotConnected = -1
+    DistanceError_NoObject = -2
+    DistanceError_OutOfRange = -3
     DistanceError_SensorValue = -4
     DistanceError_NotUpdated = -5
     DistanceError_UnexpectedLocation = -6
     DistanceError_AngleFiltered = -7
     DistanceError_LocationFiltered = -8
+    DistanceError_NotEnabled = -9
 
     def __init__(self):
         self.X = 0
@@ -774,10 +779,10 @@ class XOdometry():
         self.ENABLE_RIGHT_DISTANCE = not (AUTON_SEQUENCE == AutonSequence.MATCH_RIGHT)
         self.ENABLE_LOCATION_FILTER = False
 
-        self.LAST_VALID_BACK1_DISTANCE = -1
-        self.LAST_VALID_BACK2_DISTANCE = -1
-        self.LAST_VALID_LEFT_DISTANCE = -1
-        self.LAST_VALID_RIGHT_DISTANCE = -1
+        self.LAST_VALID_BACK1_DISTANCE = [-1, self.DistanceError_NotUpdated]
+        self.LAST_VALID_BACK2_DISTANCE = [-1, self.DistanceError_NotUpdated]
+        self.LAST_VALID_LEFT_DISTANCE = [-1, self.DistanceError_NotUpdated]
+        self.LAST_VALID_RIGHT_DISTANCE = [-1, self.DistanceError_NotUpdated]
 
     def location_callback(self):
         return self.X, self.Y, self.THETA
@@ -986,6 +991,9 @@ class XOdometry():
             # self.LAST_VALID_LEFT_DISTANCE = -1
             return XOdometry.DistanceError_LocationFiltered
 
+        if not sensor.installed():
+            return XOdometry.DistanceError_NotConnected
+        
         new_timestamp = sensor.timestamp()
 
         if new_timestamp <= previous_values[1]:
@@ -1024,15 +1032,31 @@ class XOdometry():
                 meas_back1_distance = -1
                 meas_back2_distance = -1
                 meas_back_avg_distance = 0
+
                 if self.ENABLE_BACK1_DISTANCE:
                     meas_back1_distance = self.get_distance(back_distance1, self.previous_back1_distance, self.THETA, 3, XOdometry.EBACK)
+
                     if meas_back1_distance >= 0:
                         meas_back_avg_distance += meas_back1_distance
-                    if meas_back1_distance >= 0: self.LAST_VALID_BACK1_DISTANCE = meas_back1_distance
+                        self.LAST_VALID_BACK1_DISTANCE[0] = meas_back1_distance
+                        self.LAST_VALID_BACK1_DISTANCE[1] = self.DistanceError_Normal
+                    else:
+                        self.LAST_VALID_BACK1_DISTANCE[1] = meas_back1_distance
+                else:
+                    self.LAST_VALID_BACK1_DISTANCE[1] = self.DistanceError_NotEnabled
+
                 if self.ENABLE_BACK2_DISTANCE:
                     meas_back2_distance = self.get_distance(back_distance2, self.previous_back2_distance, self.THETA, 3, XOdometry.EBACK)
-                    if meas_back2_distance >= 0: meas_back_avg_distance += meas_back2_distance
-                    if meas_back2_distance >= 0: self.LAST_VALID_BACK2_DISTANCE = meas_back2_distance
+
+                    if meas_back2_distance >= 0:
+                        meas_back_avg_distance += meas_back2_distance
+                        self.LAST_VALID_BACK2_DISTANCE[0] = meas_back2_distance
+                        self.LAST_VALID_BACK2_DISTANCE[1] = self.DistanceError_Normal
+                    else:
+                        self.LAST_VALID_BACK2_DISTANCE[1] = meas_back2_distance
+                else:
+                    self.LAST_VALID_BACK2_DISTANCE[1] = self.DistanceError_NotEnabled
+
                 if meas_back1_distance > 0 and meas_back2_distance > 0: meas_back_avg_distance = meas_back_avg_distance / 2
 
                 if meas_back_avg_distance > 0:
@@ -1049,10 +1073,20 @@ class XOdometry():
                         self.X, self.Y = self.filter.update_y(3600.0 - meas_back_avg_distance)
                     elif compass == XOdometry.EAST:
                         self.X, self.Y = self.filter.update_y(meas_back_avg_distance)
+            else:
+                self.LAST_VALID_BACK1_DISTANCE[1] = self.DistanceError_NotEnabled
+                self.LAST_VALID_BACK2_DISTANCE[1] = self.DistanceError_NotEnabled
 
             Y_Right = None
             if self.ENABLE_RIGHT_DISTANCE:
                 meas_right_distance = self.get_distance(right_distance, self.previous_right_distance, self.THETA, 1, XOdometry.ERIGHT)
+
+                if meas_right_distance >= 0:
+                    self.LAST_VALID_RIGHT_DISTANCE[0] = meas_right_distance
+                    self.LAST_VALID_RIGHT_DISTANCE[1] = self.DistanceError_Normal
+                else:
+                    self.LAST_VALID_RIGHT_DISTANCE[1] = meas_right_distance
+
                 if meas_right_distance >= 0:
                     meas_right_distance += HIDDEN_PERIMITER + ROBOT_WIDTH / 2 - RIGHT_DISTANCE_FROM_RIGHT
                     if self.FORCE_LOCATION_RESET:
@@ -1065,10 +1099,17 @@ class XOdometry():
                         self.X, self.Y = self.filter.update_x(3600.0 - meas_right_distance)
                     elif compass == XOdometry.EAST:
                         self.X, self.Y = self.filter.update_x(meas_right_distance)
+            else:
+                self.LAST_VALID_RIGHT_DISTANCE[1] = self.DistanceError_NotEnabled
 
             Y_Left = None
             if self.ENABLE_LEFT_DISTANCE:
                 meas_left_distance = self.get_distance(left_distance, self.previous_left_distance, self.THETA, 1, XOdometry.ELEFT)
+                if meas_left_distance >= 0:
+                    self.LAST_VALID_LEFT_DISTANCE[0] = meas_left_distance
+                    self.LAST_VALID_LEFT_DISTANCE[1] = self.DistanceError_Normal
+                else:
+                    self.LAST_VALID_LEFT_DISTANCE[1] = meas_left_distance
                 if meas_left_distance >= 0:
                     meas_left_distance += HIDDEN_PERIMITER + ROBOT_WIDTH / 2 - LEFT_DISTANCE_FROM_LEFT
                     if self.FORCE_LOCATION_RESET:
@@ -1081,6 +1122,8 @@ class XOdometry():
                         self.X, self.Y = self.filter.update_x(meas_left_distance)
                     elif compass == XOdometry.EAST:
                         self.X, self.Y = self.filter.update_x(3600.0 - meas_left_distance)
+            else:
+                self.LAST_VALID_LEFT_DISTANCE[1] = self.DistanceError_NotEnabled
 
             if self.FORCE_LOCATION_RESET:
                 if Y_Right is not None and Y_Left is not None:
@@ -1848,7 +1891,7 @@ def autonomous_left(as_skills = False):
         log = Logger(brain,
                 [left_front_motor, left_back_motor, right_front_motor, right_back_motor] + [inertial, rotation_fwd, rotation_side],
                 ["lfm", "lbm", "rfm", "rbm", "gyro", "fwd", "side"], False,
-                ["y", "x", "b1", "b2", "l", "r"], OnLoggerPositionCallbackDist,
+                ["y", "x", "b1", "b2", "l", "r", "status"], OnLoggerPositionCallbackDist,
                 time_sec = 15, rate_ms = 20,
                 auto_dump = True, file_name = "aurora_left"
                 )
@@ -1937,7 +1980,7 @@ def autonomous_right():
     log = Logger(brain,
             [left_front_motor, left_back_motor, right_front_motor, right_back_motor] + [inertial, rotation_fwd, rotation_side],
             ["lfm", "lbm", "rfm", "rbm", "gyro", "fwd", "side"], False,
-            ["y", "x", "b1", "b2", "l", "r"], OnLoggerPositionCallbackDist,
+            ["y", "x", "b1", "b2", "l", "r", "status"], OnLoggerPositionCallbackDist,
             time_sec = 15, rate_ms = 20,
             auto_dump = True, file_name = "aurora_right"
             )
@@ -2022,13 +2065,22 @@ def autonomous_right():
     dt.turn_for(-90, 100)
 
 def OnLoggerPositionCallbackDist():
-    return odom.Y, odom.X, odom.LAST_VALID_BACK1_DISTANCE, odom.LAST_VALID_BACK2_DISTANCE, odom.LAST_VALID_LEFT_DISTANCE, odom.LAST_VALID_RIGHT_DISTANCE
+    status = int(0)
+    status = int(-odom.LAST_VALID_BACK1_DISTANCE[1])
+    status <<= 4
+    status |= int(-odom.LAST_VALID_BACK2_DISTANCE[1])
+    status <<= 4
+    status |= int(-odom.LAST_VALID_LEFT_DISTANCE[1])
+    status <<= 4
+    status |= int(-odom.LAST_VALID_RIGHT_DISTANCE[1])
+
+    return odom.Y, odom.X, odom.LAST_VALID_BACK1_DISTANCE[0], odom.LAST_VALID_BACK2_DISTANCE[0], odom.LAST_VALID_LEFT_DISTANCE[0], odom.LAST_VALID_RIGHT_DISTANCE[0], status
 
 def autonomous_skills():
     log = Logger(brain,
                 [left_front_motor, left_back_motor, right_front_motor, right_back_motor] + [inertial, rotation_fwd, rotation_side],
                 ["lfm", "lbm", "rfm", "rbm", "gyro", "fwd", "side"], False,
-                ["y", "x", "b1", "b2", "l", "r"], OnLoggerPositionCallbackDist,
+                ["y", "x", "b1", "b2", "l", "r", "status"], OnLoggerPositionCallbackDist,
                 time_sec = 60 , rate_ms = 20,
                 auto_dump = True, file_name = "aurora_skills"
                 )
