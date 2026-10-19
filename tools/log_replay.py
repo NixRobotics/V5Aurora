@@ -15,6 +15,7 @@ Units / conventions (match src/main.py and the Logger):
     - fwd/side: rotation sensor position in DEGREES
     - x, y: odometry in mm, NED frame: X = North (robot forward at heading 0), Y = East (robot right)
     - b1, b2, l, r: last *valid* distance readings in mm (-1 = never valid)
+    - optional status: four negated error-code nibbles, high to low: b1, b2, l, r
 
 Only uses the Python standard library (tkinter).
 """
@@ -45,6 +46,10 @@ RIGHT_DISTANCE_FROM_RIGHT = 5.0
 TRACKING_WHEEL_MM = 156.0
 DRIVE_GEAR_RATIO = 24 / 48
 DRIVE_WHEEL_MM = 220.0
+TRACKING_FORWARD_OFFSET = 22.5
+TRACKING_SIDE_OFFSET = 59.6
+DRIVE_FORWARD_EFFICIENCY = 1 / 1.045
+DIAGNOSTIC_WINDOW_MS = 200
 
 # Distance sensor mounting in robot body frame:
 # key -> (forward offset mm, right offset mm, beam direction deg clockwise from robot forward, color, label)
@@ -53,6 +58,20 @@ SENSORS = {
     "b2": (-(ROBOT_LENGTH / 2 - BACK_DISTANCE2_FROM_BACK), BACK_DISTANCE_SEPARATION / 2, 180.0, "#ff7f0e", "Back 2 (right)"),
     "l": (0.0, -(ROBOT_WIDTH / 2 - LEFT_DISTANCE_FROM_LEFT), -90.0, "#2ca02c", "Left"),
     "r": (0.0, ROBOT_WIDTH / 2 - RIGHT_DISTANCE_FROM_RIGHT, 90.0, "#1f77b4", "Right"),
+}
+
+STATUS_SHIFTS = {"b1": 12, "b2": 8, "l": 4, "r": 0}
+STATUS_LABELS = {
+    0: "Normal",
+    1: "Disconnected",
+    2: "No object",
+    3: "Out of range",
+    4: "Sensor value error",
+    5: "No new timestamp (ignored)",
+    6: "Unexpected location",
+    7: "Angle filtered",
+    8: "Location filtered",
+    9: "Disabled",
 }
 
 # A "last valid" distance value that hasn't changed for this long is drawn dimmed (stale)
@@ -71,6 +90,7 @@ CHART_GROUPS = {
     "Heading (deg)": [("gyro", "Gyro", "#9467bd")],
     "Position (mm)": [("x", "X (N)", "#d62728"), ("y", "Y (E)", "#1f77b4")],
     "Distance sensors (mm)": [(k, v[4], v[3]) for k, v in SENSORS.items()],
+    "Distance status (5 ignored)": [(k + "_status", k.upper(), v[3]) for k, v in SENSORS.items()],
     "Drive motors (rpm)": [("lfm_rpm", "LF", "#d62728"), ("lbm_rpm", "LB", "#ff7f0e"),
                            ("rfm_rpm", "RF", "#1f77b4"), ("rbm_rpm", "RB", "#17becf")],
     "Speed (mm/s)": [("speed", "Speed", "#000000"), ("vn", "vN", "#d62728"), ("ve", "vE", "#1f77b4")],
@@ -79,6 +99,11 @@ CHART_GROUPS = {
     "Drive motors (turns)": [("lfm", "LF", "#d62728"), ("lbm", "LB", "#ff7f0e"),
                              ("rfm", "RF", "#1f77b4"), ("rbm", "RB", "#17becf")],
     "Sample interval (ms)": [("dt", "dt", "#555555")],
+    "Forward comparison (mm/s)": [("track_vf", "Tracking", "#00897b"), ("motor_vf", "Motors", "#ad1457")],
+    "Lateral comparison (mm/s)": [("track_vr", "Tracking", "#00897b"), ("motor_vr", "Motors", "#ad1457")],
+    "Tracking - motors (mm/s)": [("residual_vf", "Forward", "#d62728"), ("residual_vr", "Right", "#1f77b4")],
+    "Trajectory separation (mm)": [("trajectory_gap", "Tracking vs motors", "#9467bd")],
+    "Distance change interval (ms)": [(k + "_change_ms", k.upper(), v[3]) for k, v in SENSORS.items()],
 }
 DEFAULT_CHARTS = ["Heading (deg)", "Position (mm)", "Distance sensors (mm)", "Drive motors (rpm)"]
 
@@ -100,6 +125,15 @@ def body_to_field(x, y, theta_deg, fwd, right):
     t = math.radians(theta_deg)
     return (x + fwd * math.cos(t) - right * math.sin(t),
             y + fwd * math.sin(t) + right * math.cos(t))
+
+
+def integrate_body_step(north, east, heading_before, heading_after, forward, right):
+    """Integrate a constant body twist; encoder increments describe arc travel."""
+    delta = math.radians(heading_after - heading_before)
+    half = delta / 2
+    scale = math.sin(half) / half if half != 0 else 1.0
+    return body_to_field(north, east, (heading_before + heading_after) / 2,
+                         forward * scale, right * scale)
 
 
 # ------------------------------------------------------------------------------ #
@@ -178,6 +212,13 @@ class LogData:
 
     def _derive(self):
         c = self.cols
+        if "status" in c:
+            for i, value in enumerate(c["status"]):
+                if not math.isfinite(value) or not value.is_integer() or not 0 <= value <= 0xFFFF:
+                    raise ValueError("Invalid packed distance status at sample {}: {}".format(i + 1, value))
+            for key, shift in STATUS_SHIFTS.items():
+                codes = [(int(value) >> shift) & 0xF for value in c["status"]]
+                c[key + "_status"] = [0 if code == 5 else code for code in codes]
         c["dt"] = [0.0] + [b - a for a, b in zip(self.t, self.t[1:])]
         if "x" in c and "y" in c:
             c["vn"] = self._central_rate(c["x"])
@@ -204,12 +245,95 @@ class LogData:
                     last_change = i
                 ages.append(self.t[i] - self.t[last_change])
             self.age[key] = ages
+        self._derive_diagnostics()
+
+    def _derive_diagnostics(self):
+        c = self.cols
+        self.trajectories = {}
+        if all(key in c for key in ("x", "y", "gyro")):
+            heading = c["gyro"]
+            delta = [0.0] + [math.radians(b - a) for a, b in zip(heading, heading[1:])]
+            if all(key in c for key in ("fwd", "side")):
+                forward = [0.0] + [
+                    (c["fwd"][i] - c["fwd"][i - 1]) / 360 * TRACKING_WHEEL_MM
+                    + TRACKING_FORWARD_OFFSET * delta[i] for i in range(1, self.n)]
+                right = [0.0] + [
+                    (c["side"][i] - c["side"][i - 1]) / 360 * TRACKING_WHEEL_MM
+                    - TRACKING_SIDE_OFFSET * delta[i] for i in range(1, self.n)]
+                self._motion_diagnostics("track", forward, right)
+            if all(key in c for key, _ in MOTORS):
+                forward, right = [0.0], [0.0]
+                scale = DRIVE_GEAR_RATIO * DRIVE_WHEEL_MM * math.sqrt(2)
+                for i in range(1, self.n):
+                    lf, lb, rf, rb = [c[key][i] - c[key][i - 1] for key, _ in MOTORS]
+                    forward.append((lf + lb + rf + rb) / 4 * scale * DRIVE_FORWARD_EFFICIENCY)
+                    right.append((lf - lb - rf + rb) / 4 * scale)
+                self._motion_diagnostics("motor", forward, right)
+            if "track" in self.trajectories and "motor" in self.trajectories:
+                for axis in ("vf", "vr"):
+                    c["residual_" + axis] = [
+                        a - b if a is not None and b is not None else None
+                        for a, b in zip(c["track_" + axis], c["motor_" + axis])]
+                c["trajectory_gap"] = [math.hypot(a[0] - b[0], a[1] - b[1])
+                                       for a, b in zip(self.trajectories["track"], self.trajectories["motor"])]
+        for key in SENSORS:
+            if key not in c:
+                continue
+            intervals = [None] * self.n
+            last_change = None
+            for i in range(1, self.n):
+                value, previous = c[key][i], c[key][i - 1]
+                if value < 0 or self.sensor_status(key, i) not in (None, 0, 5):
+                    last_change = None
+                    continue
+                if previous >= 0 and value != previous:
+                    if last_change is not None:
+                        intervals[i] = self.t[i] - self.t[last_change]
+                    last_change = i
+            c[key + "_change_ms"] = intervals
+
+    def _motion_diagnostics(self, prefix, forward, right):
+        c = self.cols
+        path = [(c["x"][0], c["y"][0])]
+        sums = [[0.0], [0.0]]
+        for i in range(1, self.n):
+            path.append(integrate_body_step(*path[-1], c["gyro"][i - 1], c["gyro"][i],
+                                            forward[i], right[i]))
+            for cumulative, step in zip(sums, (forward[i], right[i])):
+                cumulative.append(cumulative[-1] + step)
+        self.trajectories[prefix] = path
+        for axis, cumulative in zip(("vf", "vr"), sums):
+            rates = [None] * self.n
+            for i in range(1, self.n):
+                start = max(0, bisect.bisect_right(self.t, self.t[i] - DIAGNOSTIC_WINDOW_MS) - 1)
+                elapsed = self.t[i] - self.t[start]
+                if elapsed > 0:
+                    rates[i] = (cumulative[i] - cumulative[start]) * 1000 / elapsed
+            c[prefix + "_" + axis] = rates
 
     def index_at(self, t_ms):
         return max(0, min(self.n - 1, bisect.bisect_right(self.t, t_ms) - 1))
 
     def is_valid(self, key, v):
-        return v is not None and not (key in SENSORS and v < 0)
+        return v is not None and math.isfinite(v) and not (key in SENSORS and v < 0)
+
+    def sensor_status(self, key, i):
+        value = self.get("status", i)
+        return None if value is None else (int(value) >> STATUS_SHIFTS[key]) & 0xF
+
+    def sensor_notes(self, key, i):
+        code = self.sensor_status(key, i)
+        if code is not None:
+            label = STATUS_LABELS.get(code, "Unknown code {}".format(code))
+            return "{} [{}]; held reading, timing approximate".format(label, code)
+        age = self.age[key][i]
+        return "unchanged for {:.0f} ms{}".format(age, " (STALE)" if age > STALE_MS else "")
+
+    def sensor_dashed(self, key, i):
+        code = self.sensor_status(key, i)
+        if code is not None:
+            return code not in (0, 5)
+        return self.age[key][i] > STALE_MS
 
     def implied_positions(self, i):
         """Position implied by distance sensors, computed the same way as odom_thread() in main.py.
@@ -243,6 +367,7 @@ class LogData:
 
 class FieldView(tk.Canvas):
     MARGIN = 28
+    MAX_ZOOM = 16.0
 
     def __init__(self, master, **kw):
         super().__init__(master, background="#f4f4f4", highlightthickness=0, **kw)
@@ -250,15 +375,67 @@ class FieldView(tk.Canvas):
         self.index = 0
         self.show_trail = True
         self.show_rays = True
+        self.show_diagnostics = False
+        self._diagnostic_px = {}
         self._trail_px = []
+        self.zoom = 1.0
+        self.center_n = self.center_e = FIELD_MM / 2
+        self._drag_position = None
         self.bind("<Configure>", lambda e: self.redraw_all())
         self.bind("<Motion>", self._on_motion)
         self.bind("<Leave>", lambda e: self.itemconfigure("hover", text=""))
+        self.bind("<MouseWheel>", self._on_wheel)
+        self.bind("<Button-4>", lambda e: self.zoom_at(1.2, e.x, e.y))
+        self.bind("<Button-5>", lambda e: self.zoom_at(1 / 1.2, e.x, e.y))
+        self.bind("<ButtonPress-1>", self._start_pan)
+        self.bind("<B1-Motion>", self._pan)
+        self.bind("<ButtonRelease-1>", self._end_pan)
 
     def _geometry(self):
         w, h = self.winfo_width(), self.winfo_height()
         size = max(10, min(w, h) - 2 * self.MARGIN)
-        return (w - size) / 2, (h - size) / 2, size / FIELD_MM
+        scale = size / FIELD_MM * self.zoom
+        return w / 2 - self.center_e * scale, h / 2 - (FIELD_MM - self.center_n) * scale, scale
+
+    def zoom_at(self, factor, px=None, py=None):
+        px = self.winfo_width() / 2 if px is None else px
+        py = self.winfo_height() / 2 if py is None else py
+        before_n, before_e = self.to_ned(px, py)
+        self.zoom = max(1.0, min(self.MAX_ZOOM, self.zoom * factor))
+        after_n, after_e = self.to_ned(px, py)
+        self.center_n += before_n - after_n
+        self.center_e += before_e - after_e
+        self.redraw_all()
+        return "break"
+
+    def reset_view(self):
+        self.zoom = 1.0
+        self.center_n = self.center_e = FIELD_MM / 2
+        self.redraw_all()
+
+    def _on_wheel(self, event):
+        delta = event.delta
+        if self.tk.call("tk", "windowingsystem") != "aqua":
+            delta /= 120
+        return self.zoom_at(1.2 ** max(-4, min(4, delta)), event.x, event.y)
+
+    def _start_pan(self, event):
+        self._drag_position = (event.x, event.y)
+        self.configure(cursor="fleur")
+
+    def _pan(self, event):
+        if self._drag_position is None:
+            return
+        previous_x, previous_y = self._drag_position
+        _, _, scale = self._geometry()
+        self.center_e -= (event.x - previous_x) / scale
+        self.center_n += (event.y - previous_y) / scale
+        self._drag_position = (event.x, event.y)
+        self.redraw_all()
+
+    def _end_pan(self, _event):
+        self._drag_position = None
+        self.configure(cursor="")
 
     # NED (north, east) -> canvas pixels; North is up, East is right
     def to_px(self, n, e):
@@ -295,13 +472,24 @@ class FieldView(tk.Canvas):
         self.create_text(ox + size + 4, oy + size / 2, text="E\n(+Y)", anchor="w", font=("Segoe UI", 8, "bold"))
 
         self._trail_px = []
+        self._diagnostic_px = {}
         if self.log is not None and self.log.has("x") and self.log.has("y"):
             for n, e in zip(self.log.cols["x"], self.log.cols["y"]):
                 self._trail_px.extend(self.to_px(n, e))
             if len(self._trail_px) >= 4:
                 self.create_line(*self._trail_px, fill="#a0a0c8", width=1, dash=(2, 2), tags="fullpath")
             self.create_line(0, 0, 0, 0, fill="#3030a0", width=2, tags="trail")
-        self.create_text(ox + 4, oy + 4, anchor="nw", text="", font=("Consolas", 8), fill="#222", tags="hover")
+        if self.log is not None:
+            for name, path in self.log.trajectories.items():
+                self._diagnostic_px[name] = [coord for n, e in path for coord in self.to_px(n, e)]
+                self.create_line(0, 0, 0, 0, fill="#00897b" if name == "track" else "#ad1457",
+                                 width=2, tags=("diagnostic", "path_" + name))
+        self.create_text(8, 8, anchor="nw", text="", font=("Consolas", 8), fill="#222", tags="hover")
+        self.create_text(self.winfo_width() - 8, 8, anchor="ne", text="{:.1f}x".format(self.zoom),
+                         font=("Consolas", 9), fill="#222", tags="zoom")
+        if self.log is not None and self.log.has("status"):
+            self.create_text(8, 26, anchor="nw", text="", font=("Consolas", 8),
+                             fill="#222", tags="sensor_status")
         self.update_robot(self.index)
 
     def _on_motion(self, ev):
@@ -315,6 +503,18 @@ class FieldView(tk.Canvas):
         self.index = i
         self.delete("robot")
         log = self.log
+        self.itemconfigure("diagnostic", state="normal" if self.show_diagnostics and i > 0 else "hidden")
+        if self.show_diagnostics and i > 0:
+            for name, points in self._diagnostic_px.items():
+                self.coords("path_" + name, *points[:2 * (i + 1)])
+                px, py = points[2 * i:2 * i + 2]
+                self.create_oval(px - 4, py - 4, px + 4, py + 4,
+                                 fill="#00897b" if name == "track" else "#ad1457", tags="robot")
+        if log is not None and log.has("status"):
+            self.itemconfigure("sensor_status", text="\n".join(
+                "{}: {}".format(key.upper(), STATUS_LABELS.get(log.sensor_status(key, i),
+                                                             "Unknown code {}".format(log.sensor_status(key, i))))
+                for key in SENSORS))
         if log is None or not (log.has("x") and log.has("y")):
             return
         x, y = log.get("x", i), log.get("y", i)
@@ -335,7 +535,7 @@ class FieldView(tk.Canvas):
                 sn, se = body_to_field(x, y, theta, fo, ro)
                 a = math.radians(theta + ang)
                 en, ee = sn + d * math.cos(a), se + d * math.sin(a)
-                stale = log.age[key][i] > STALE_MS
+                stale = log.sensor_dashed(key, i)
                 p0, p1 = self.to_px(sn, se), self.to_px(en, ee)
                 self.create_line(*p0, *p1, fill=color, width=1 if stale else 2,
                                  dash=(4, 3) if stale else (), tags="robot")
@@ -355,6 +555,8 @@ class FieldView(tk.Canvas):
         self.create_line(*c, *tip, fill="#c00000", width=2, arrow="last", tags="robot")
         self.create_oval(c[0] - 3, c[1] - 3, c[0] + 3, c[1] + 3, fill="#000", tags="robot")
         self.tag_raise("hover")
+        self.tag_raise("sensor_status")
+        self.tag_raise("zoom")
 
 
 # ------------------------------------------------------------------------------ #
@@ -389,6 +591,7 @@ class StripChart(ttk.Frame):
 
     def set_log(self, log):
         self.log = log
+        self.index = 0
         self._yrange = {}
         self.redraw()
 
@@ -483,6 +686,10 @@ class StripChart(ttk.Frame):
         i0 = max(0, bisect.bisect_left(self.log.t, t0) - 1)
         i1 = min(self.log.n, bisect.bisect_right(self.log.t, t1) + 1)
         stride = max(1, (i1 - i0) // max(1, pw))
+        status_chart = self.group_var.get() == "Distance status (5 ignored)"
+        interval_chart = self.group_var.get() == "Distance change interval (ms)"
+        if status_chart or interval_chart:
+            stride = 1
         x = pl + 4
         for key, label, color in self.signals():
             vals = self.log.cols[key]
@@ -490,6 +697,12 @@ class StripChart(ttk.Frame):
             for i in range(i0, i1, stride):
                 v = vals[i]
                 if self.log.is_valid(key, v):
+                    if interval_chart:
+                        xx, yy = tx(self.log.t[i]), ty(v)
+                        c.create_oval(xx - 2, yy - 2, xx + 2, yy + 2, fill=color, outline=color)
+                        continue
+                    if status_chart and seg:
+                        seg.extend((tx(self.log.t[i]), seg[-1]))
                     seg.extend((tx(self.log.t[i]), ty(v)))
                 else:
                     if len(seg) >= 4:
@@ -562,10 +775,55 @@ class App(tk.Tk):
         fm.add_separator()
         fm.add_command(label="Exit", command=self.destroy)
         m.add_cascade(label="File", menu=fm)
+        diagnostics = tk.Menu(m, tearoff=0)
+        diagnostics.add_command(label="Tracking comparison layout", command=self._tracking_layout)
+        diagnostics.add_command(label="Distance timing layout", command=self._distance_layout)
+        diagnostics.add_command(label="Replay layout", command=lambda: self._chart_layout(DEFAULT_CHARTS))
+        diagnostics.add_separator()
+        self.diagnostics_var = tk.BooleanVar(value=False)
+        diagnostics.add_checkbutton(label="Show tracking / motor paths", variable=self.diagnostics_var,
+                                    command=self._apply_view_opts)
+        diagnostics.add_command(label="Model assumptions / limitations", command=self._diagnostic_help)
+        m.add_cascade(label="Diagnostics", menu=diagnostics)
         hm = tk.Menu(m, tearoff=0)
         hm.add_command(label="Keyboard shortcuts", command=self._show_help)
         m.add_cascade(label="Help", menu=hm)
         self.config(menu=m)
+
+    def _chart_layout(self, groups):
+        for chart, group in zip(self.charts, groups):
+            chart.group_var.set(group)
+            chart.redraw()
+
+    def _tracking_layout(self):
+        self._chart_layout(["Forward comparison (mm/s)", "Lateral comparison (mm/s)",
+                            "Tracking - motors (mm/s)", "Trajectory separation (mm)"])
+        self.diagnostics_var.set(True)
+        self._apply_view_opts()
+
+    def _distance_layout(self):
+        self._chart_layout(["Distance sensors (mm)", "Distance change interval (ms)",
+                            "Distance status (5 ignored)", "Tracking - motors (mm/s)"])
+
+    def _diagnostic_help(self):
+        messagebox.showinfo("Diagnostic model",
+                            "Paths: teal = tracking + gyro; magenta = motors + gyro; blue = logged pose.\n"
+                            "Both reconstructed paths start at the first logged X/Y and receive no wall corrections.\n"
+                            "The shared gyro is not an independent heading reference.\n\n"
+                            "Tracking circumference: {} mm; forward wheel right offset: {} mm;\n"
+                            "side wheel forward offset: {} mm. Motor ratio: {}; circumference: {} mm;\n"
+                            "forward efficiency: {:.6f}; ideal 45-degree X-drive mixing.\n"
+                            "Parameters are desktop assumptions, not fitted to this log.\n\n"
+                            "Body velocities use trailing ~{} ms windows and compensate tracking rotation.\n"
+                            "Residual = tracking minus motors: disagreement is NOT proof of wheel slip or contact loss.\n"
+                            "Logged pose is fused, not independent ground truth. No PID targets/commands are logged.\n\n"
+                            "Distance interval dots measure observed numeric changes, NOT update period or latency.\n"
+                            "Unchanged readings can still be fresh. Sampling may miss changes.\n"
+                            "Fault/filter samples break interval sequences; code 5 is neutral.\n"
+                            "No automatic delay estimate or PID tuning is performed.".format(
+                                TRACKING_WHEEL_MM, TRACKING_FORWARD_OFFSET, TRACKING_SIDE_OFFSET,
+                                DRIVE_GEAR_RATIO, DRIVE_WHEEL_MM, DRIVE_FORWARD_EFFICIENCY,
+                                DIAGNOSTIC_WINDOW_MS))
 
     def _build_ui(self):
         bar = ttk.Frame(self, padding=4)
@@ -608,8 +866,18 @@ class App(tk.Tk):
 
         pw = ttk.PanedWindow(self, orient="horizontal")
         pw.pack(fill="both", expand=True)
-        self.field = FieldView(pw, width=500, height=500)
-        pw.add(self.field, weight=3)
+        field_frame = ttk.Frame(pw)
+        pw.add(field_frame, weight=3)
+        field_bar = ttk.Frame(field_frame, padding=3)
+        field_bar.pack(fill="x")
+        self.field = FieldView(field_frame, width=500, height=500)
+        for text, command in (("+", lambda: self.field.zoom_at(1.2)),
+                              ("-", lambda: self.field.zoom_at(1 / 1.2)),
+                              ("Fit field", self.field.reset_view)):
+            ttk.Button(field_bar, text=text, command=command, takefocus=0,
+                       width=8 if text == "Fit field" else 3).pack(side="left", padx=2)
+        ttk.Label(field_bar, text="Wheel: zoom  |  Drag: pan").pack(side="left", padx=4)
+        self.field.pack(fill="both", expand=True)
 
         right = ttk.PanedWindow(pw, orient="vertical")
         pw.add(right, weight=4)
@@ -663,7 +931,12 @@ class App(tk.Tk):
                             "Home / End: start / end\n"
                             "Ctrl+O: open log\n\n"
                             "Click or drag on a chart to seek.\n"
-                            "Dashed sensor rays = value is stale (not updated for > {} ms).".format(STALE_MS))
+                            "Field: mouse wheel to zoom at pointer; left-drag to pan.\n"
+                            "Field + / - zoom at centre; Fit field resets zoom and pan.\n"
+                            "With status: dashed rays = rejected / fault / disabled.\n"
+                            "Status 5 (no new timestamp) is ignored for ray styling and status charts.\n"
+                            "Readings are last-valid values; status timing is approximate.\n"
+                            "Without status: dashed rays = unchanged for > {} ms.".format(STALE_MS))
 
     # ---- file handling ----
     def open_dialog(self):
@@ -720,6 +993,10 @@ class App(tk.Tk):
         row("pose", "vn", "vN (mm/s)")
         row("pose", "ve", "vE (mm/s)")
         group("dist", "Distance sensors (last valid)")
+        for tag, color in (("sensor_fault", "#b00020"), ("sensor_filtered", "#875600")):
+            self.tree.tag_configure(tag, foreground=color)
+        if log.has("status"):
+            row("dist", "status", "Packed status")
         for key, (_, _, _, _, label) in SENSORS.items():
             if log.has(key):
                 row("dist", key, "{} [{}] (mm)".format(label, key))
@@ -734,8 +1011,18 @@ class App(tk.Tk):
         for key, label in MOTORS:
             if log.has(key):
                 row("motors", key, "{} (turns)".format(label))
+        group("diagnostics", "Diagnostics (not ground truth)")
+        for key, label in (("track_vf", "Tracking forward (mm/s)"), ("motor_vf", "Motor forward (mm/s)"),
+                           ("track_vr", "Tracking right (mm/s)"), ("motor_vr", "Motor right (mm/s)"),
+                           ("residual_vf", "Forward difference (mm/s)"), ("residual_vr", "Right difference (mm/s)"),
+                           ("trajectory_gap", "Path separation (mm)")):
+            if log.has(key):
+                row("diagnostics", key, label)
+        for key in SENSORS:
+            if log.has(key):
+                row("diagnostics", key + "_change_ms", key.upper() + " change interval (ms)")
         group("other", "Other columns")
-        known = {"sys_time", "x", "y", "gyro", "fwd", "side"} | set(SENSORS) | {k for k, _ in MOTORS}
+        known = {"sys_time", "x", "y", "gyro", "fwd", "side", "status"} | set(SENSORS) | {k for k, _ in MOTORS}
         for key in log.header:
             if key not in known:
                 row("other", "col_" + key, key)
@@ -767,16 +1054,20 @@ class App(tk.Tk):
         self._set_row("speed", fmt(g("speed", i)))
         self._set_row("vn", fmt(g("vn", i)))
         self._set_row("ve", fmt(g("ve", i)))
+        packed = g("status", i)
+        if packed is not None:
+            self._set_row("status", "0x{:04X}".format(int(packed)), "b1 / b2 / L / R; 5 ignored, timing approximate")
         for key in SENSORS:
             v = g(key, i)
             if v is None:
                 continue
+            notes = log.sensor_notes(key, i)
             if v < 0:
-                self._set_row(key, "invalid", "no valid reading yet")
-            else:
-                age = log.age[key][i]
-                self._set_row(key, "{:.1f}".format(v),
-                              "updated {:.0f} ms ago{}".format(age, "  (STALE)" if age > STALE_MS else ""))
+                notes += "; no valid reading yet"
+            self._set_row(key, "--" if v < 0 else "{:.1f}".format(v), notes)
+            code = log.sensor_status(key, i)
+            tag = "sensor_fault" if code in (1, 2, 3, 4) else "sensor_filtered" if code not in (None, 0, 5) else ""
+            self.tree.item(key, tags=(tag,) if tag else ())
         implied = {name: (axis, val, tol) for name, axis, val, tol in log.implied_positions(i)}
         for name in ("Back", "Right", "Left"):
             if name in implied:
@@ -784,7 +1075,9 @@ class App(tk.Tk):
                 odom = g(axis.lower(), i)
                 diff = "odom diff {:+.1f} mm, ".format(val - odom) if odom is not None else ""
                 self._set_row("imp_" + name, "{} = {:.1f}".format(axis, val),
-                              "{}heading {} tolerance".format(diff, "within" if tol else "OUTSIDE"))
+                              "{}heading {} tolerance{}".format(
+                                  diff, "within" if tol else "OUTSIDE",
+                                  "; held-value estimate, not acceptance" if log.has("status") else ""))
             else:
                 self._set_row("imp_" + name, "--")
         for key in ("fwd", "side"):
@@ -800,6 +1093,12 @@ class App(tk.Tk):
         for key in log.header:
             if "col_" + key in self.rows:
                 self._set_row("col_" + key, fmt(g(key, i), "{:.3f}"))
+        for key in ("track_vf", "motor_vf", "track_vr", "motor_vr", "residual_vf", "residual_vr"):
+            self._set_row(key, fmt(g(key, i)), "trailing ~{} ms; body frame".format(DIAGNOSTIC_WINDOW_MS))
+        self._set_row("trajectory_gap", fmt(g("trajectory_gap", i)), "tracking vs motors; shared gyro, no wall corrections")
+        for key in SENSORS:
+            self._set_row(key + "_change_ms", fmt(g(key + "_change_ms", i)),
+                          "observed numeric changes, NOT sensor latency")
 
     # ---- navigation ----
     def set_index(self, i):
@@ -861,6 +1160,7 @@ class App(tk.Tk):
     def _apply_view_opts(self):
         self.field.show_trail = self.trail_var.get()
         self.field.show_rays = self.rays_var.get()
+        self.field.show_diagnostics = self.diagnostics_var.get()
         self.field.update_robot(self.index)
 
     # ---- playback ----
