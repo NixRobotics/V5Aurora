@@ -6,6 +6,8 @@ BEETLE = False
 
 class XDriveTrain():
 
+    # TODO: These should be passed in a configuration parameters
+    
     if BEETLE:
         FORWARD_EFFICIENCY = 1.0
         LEFT_POWER_SCALING = 1.0
@@ -116,6 +118,10 @@ class XDriveTrain():
                 self.lbm.stop(BRAKE)
                 self.rfm.stop(BRAKE)
                 self.rbm.stop(BRAKE)
+
+                self.log_motor_commands(0, 0, 0, 0)
+                self.log_drive_commands(0, 0, 0)
+
                 done = True
             else:
                 turn_control = turn_kp * heading_error / 360.0
@@ -222,6 +228,9 @@ class XDriveTrain():
                 self.lbm.stop(BRAKE)
                 self.rfm.stop(BRAKE)
                 self.rbm.stop(BRAKE)
+                
+                self.log_motor_commands(0, 0, 0, 0)
+                self.log_drive_commands(0, 0, 0)
             else:
                 fwd_control = drive_kp * average_fwd_error
                 fwd_control = self.limit(fwd_control, speed)
@@ -396,6 +405,10 @@ class XDriveTrain():
                 self.lbm.stop(BRAKE)
                 self.rfm.stop(BRAKE)
                 self.rbm.stop(BRAKE)
+
+                self.log_motor_commands(0, 0, 0, 0)
+                self.log_drive_commands(0, 0, 0)
+
             else:
                 # PID loops for major and minor errors
                 major_control = major_kp * major_error_revs + major_kd * filtered_major_derivative

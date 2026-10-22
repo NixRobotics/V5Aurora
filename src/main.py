@@ -46,12 +46,12 @@ ALLIANCE_COLOR = AllianceColor.RED
 # ALLIANCE_COLOR = AllianceColor.BLUE
 
 # AUTON_SEQUENCE = AutonSequence.SKILLS
-AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
+# AUTON_SEQUENCE = AutonSequence.MATCH_LEFT
 # AUTON_SEQUENCE = AutonSequence.MATCH_RIGHT
 # AUTON_SEQUENCE = AutonSequence.MATCH_NONE
-# AUTON_SEQUENCE = CALIBRATION
+AUTON_SEQUENCE = CALIBRATION
 
-AUTON_START_Y = 2100
+AUTON_START_Y = 0
 AUTON_START_X = 0
 
 # ------------------------------------------------------------ #
@@ -97,6 +97,11 @@ else:
 inertial = InertialWrapper(Ports.PORT5, 181.5/180.0)
 
 class DistanceWrapper(Distance):
+    '''
+    Wrapper class for the Distance sensor that supports error correction modes.
+
+    Note that distance sensors update at 30FPS and can show a processing lag of around 20ms, which seems to change during motion.
+    '''
 
     NotConnectedError = -1
     NoObjectError = -2
@@ -106,6 +111,7 @@ class DistanceWrapper(Distance):
     ErrorMode_Offset = 1
     ErrorMode_Linear = 2
     ErrorMode_Logistic = 3
+    ErrorMode_Piecewise = 4
 
     class ErrorModeDescriptor:
         def __init__(self):
@@ -145,6 +151,18 @@ class DistanceWrapper(Distance):
 
         def correct(self, value):
             return value - self.error / (1 + math.exp(self.steepness * (value - self.midpoint)))
+
+    class ErrorMode_Piecewise_Descriptor(ErrorModeDescriptor):
+        def __init__(self, points):
+            self.points = sorted(points)
+
+        def correct(self, value):
+            for i in range(len(self.points) - 1):
+                x0, y0 = self.points[i]
+                x1, y1 = self.points[i + 1]
+                if x0 <= value <= x1:
+                    return y0 + (y1 - y0) * (value - x0) / (x1 - x0)
+            return value
 
     def __init__(self, port, close_error_descriptor=None, far_error_descriptor=None, transition_distance=None, max_value=None):
 
@@ -239,12 +257,12 @@ RIGHT_DISTANCE_FAR_TRANSITION = 1600 # mm
 right_distance_far_error = DistanceWrapper.ErrorMode_Linear_Descriptor(RIGHT_DISTANCE_CLOSE_TRANSITION, RIGHT_DISTANCE_CLOSE_ERROR, RIGHT_DISTANCE_FAR_TRANSITION, RIGHT_DISTANCE_FAR_ERROR)
 right_distance = DistanceWrapper(Ports.PORT8, far_error_descriptor=right_distance_far_error, transition_distance=RIGHT_DISTANCE_CLOSE_TRANSITION, max_value=1700)
 
-ROTATION_SIDE_WHEEL_SIZE = 156 # 2 * 25.4 * pi # mm circumference
-ROTATION_SIDE_WHEEL_OFFSET = 59.6 # 61.0 # mm (forward)
+ROTATION_SIDE_WHEEL_SIZE = 157 # 2 * 25.4 * pi # mm circumference
+ROTATION_SIDE_WHEEL_OFFSET = 60 # 61.0 # mm (forward)
 rotation_side = Rotation(Ports.PORT18, True)
 
-ROTATION_FWD_WHEEL_SIZE = 156 # 2 * 25.4 * pi # mm circumference
-ROTATION_FWD_WHEEL_OFFSET = 22.5 # 23.0 # mm (right)
+ROTATION_FWD_WHEEL_SIZE = 157 # 2 * 25.4 * pi # mm circumference
+ROTATION_FWD_WHEEL_OFFSET = 25 # 23.0 # mm (right)
 rotation_fwd = Rotation(Ports.PORT20, False)
 
 claw_solenoid = DigitalOut(brain.three_wire_port.a)
@@ -772,11 +790,11 @@ class XOdometry():
         self.previous_left_distance = [0.0, 0]
         self.previous_right_distance = [0.0, 0]
 
-        self.ENABLE_BACK_DISTANCE = True
+        self.ENABLE_BACK_DISTANCE = False
         self.ENABLE_BACK1_DISTANCE = True
         self.ENABLE_BACK2_DISTANCE = True
-        self.ENABLE_LEFT_DISTANCE = not (AUTON_SEQUENCE == AutonSequence.MATCH_RIGHT)
-        self.ENABLE_RIGHT_DISTANCE = not (AUTON_SEQUENCE == AutonSequence.MATCH_RIGHT)
+        self.ENABLE_LEFT_DISTANCE = False
+        self.ENABLE_RIGHT_DISTANCE = False
         self.ENABLE_LOCATION_FILTER = False
 
         self.LAST_VALID_BACK1_DISTANCE = [-1, self.DistanceError_NotUpdated]
@@ -984,11 +1002,9 @@ class XOdometry():
     def get_distance(self, sensor: DistanceWrapper, previous_values: List[float], rotation, angle_threshold = 1, sensor_dirction = EFORWARD):
 
         if not self.filter_distance_by_angle(rotation, angle_threshold):
-            # LAST_VALID_LEFT_DISTANCE = -1
             return XOdometry.DistanceError_AngleFiltered
 
         if self.ENABLE_LOCATION_FILTER and not self.filter_distance_by_location(sensor_dirction, self.X, self.Y, rotation):
-            # self.LAST_VALID_LEFT_DISTANCE = -1
             return XOdometry.DistanceError_LocationFiltered
 
         if not sensor.installed():
@@ -1019,6 +1035,11 @@ class XOdometry():
         self.initialize_rotation()
         self.initialize_distances()
         self.filter = KalmanXY(self.X, self.Y)
+
+        if AUTON_SEQUENCE == AutonSequence.SKILLS: self.odom_distance_enable(True, True, True)
+        if AUTON_SEQUENCE == AutonSequence.MATCH_LEFT: self.odom_distance_enable(True, True, True)
+        if AUTON_SEQUENCE == AutonSequence.MATCH_RIGHT: self.odom_distance_enable(True, False, False)
+        if AUTON_SEQUENCE == CALIBRATION: self.odom_distance_enable(False, False, False)
 
         count = 0
         while True:
@@ -1486,39 +1507,78 @@ def log_odom():
 ### AUTONOMOUS ROUTINES
 # ------------------------------------------------------------ #
 
+TEST_PHASE = 0
+
+def OnLoggerPositionCallbackCalibration():
+
+    return dt.last_fwd_command, dt.last_strafe_command, dt.last_turn_command, odom.Y, odom.X, inertial.acceleration(XAXIS), TEST_PHASE
+
+
+def distancesensor_delay():
+    odom.odom_distance_enable(False, False, False)
+    wait(100, MSEC)
+    dt.turn_for(30, 50)
+    dt.turn_for(-60, 50)
+    dt.turn_for(60, 50)
+    dt.turn_for(-30, 50)
+    wait(100, MSEC)
+    return    
+
 def autonomous_calibration():
-    global DISTANCE_ENABLED
+    global TEST_PHASE
+
+    print("--- Starting autonomous calibration ---")
+
+    log = Logger(brain,
+        [left_front_motor, left_back_motor, right_front_motor, right_back_motor, inertial, rotation_fwd, rotation_side, right_distance],
+        ["lfm", "lbm", "rfm", "rbm", "gyro", "fwd", "side", "right"], False,
+        ["fwd", "strafe", "turn", "y", "x", "accel_x", "phase"], OnLoggerPositionCallbackCalibration,
+        time_sec = 45, rate_ms = 5, max_length = 30 * 100,
+        auto_dump = True, file_name = "calibration"
+        )
+    log.start()
+    wait(100, MSEC)
 
     # Thread(odom_thread)
     # Thread(log_drivetrain)
     # Thread(log_odom)
     # place automonous code here
-    starting_distance, starting_angle = average_back_distance()
-    #print("Back distance: {}".format(starting_distance))
 
-    #odom_distance_enable(False, False, False)
-    #wait(100, MSEC)
-    #dt.turn_for(90, 25)
-    #wait(100, MSEC)
-    #return
+    odom.odom_distance_enable(False, False, False)
+    for i in range(10):
+        TEST_PHASE = i * 2 + 1
+        dt.drive_to_xy((i + 1) * 120, 0, False, 66, 0, major_kp=50, major_kd=256, minor_kp=25, minor_kd=0, turn_kp=550)
+        wait(100, MSEC)
+        odom.odom_print()
+        TEST_PHASE = i * 2 + 2
+        dt.drive_to_xy(0, 0, False, 66, 0, major_kp=50, major_kd=256, minor_kp=25, minor_kd=0, turn_kp=550)
+        wait(100, MSEC)
+        odom.odom_print()
 
-    center_on_cup()
-    return
+    dt.stop_all(COAST)
+    lift_motor.stop(COAST)
+    claw_arm_motor1.stop(COAST)
+    claw_arm_motor2.stop(COAST)
 
-    odom_distance_enable(True, False, True)
+    while True:
+        wait(100, MSEC)
 
-    wait(100, MSEC)
+    # odom_distance_enable(True, False, True)
 
-    dt.drive_to_xy(400, 1800, False, 25, heading = 0)
-    dt.drive_to_xy(400, 3000, True, 25, heading = 0)
-    wait(100, MSEC)
-    return
+    # wait(100, MSEC)
 
-    speed = 33
-    turn_speed = 75
-    first_run = True
+    # dt.drive_to_xy(400, 1800, False, 25, heading = 0)
+    # dt.drive_to_xy(400, 3000, True, 25, heading = 0)
+    # wait(100, MSEC)
+    # return
 
-    if True:
+
+    if False:
+
+        speed = 33
+        turn_speed = 75
+        first_run = True
+
         dt.drive_to_xy(300.0, 2750.0, False, speed, heading = 0)
 
         while True:
@@ -1569,7 +1629,7 @@ def autonomous_calibration():
                 speed = 33
 
 
-    while True:
+    while False:
         dt.drive_to_xy(900.0, 1800.0, False, 66, heading = 0)
         #wait(500, MSEC)
         dt.drive_to_xy(900.0, 700.0, True, 66, heading = 0)
@@ -2122,6 +2182,8 @@ def autonomous_skills():
 
 
 def autonomous():
+    print("AUTONOMOUS {}".format(AUTON_SEQUENCE))
+
     global ROBOT_ENABLED
     while not ROBOT_INITIALIZED:
         wait(100, MSEC)
@@ -2186,13 +2248,14 @@ def pre_autonomous():
 
     Thread(odom.odom_thread)
 
-    ui = PreAutonUI(brain, ALLIANCE_COLOR, AUTON_SEQUENCE)
-    ui.start()
-    while (not ROBOT_ENABLED):
-        ALLIANCE_COLOR, AUTON_SEQUENCE = ui.get_current_selection()
-        wait(10, MSEC)
-    odom.odom_print()
-    ui.stop()
+    if not AUTON_SEQUENCE == CALIBRATION:
+        ui = PreAutonUI(brain, ALLIANCE_COLOR, AUTON_SEQUENCE)
+        ui.start()
+        while (not ROBOT_ENABLED):
+            ALLIANCE_COLOR, AUTON_SEQUENCE = ui.get_current_selection()
+            wait(10, MSEC)
+        odom.odom_print()
+        ui.stop()
 
     motor_monitor = MotorMonitor(brain, all_motors, all_motor_names)
     motor_monitor.start()
