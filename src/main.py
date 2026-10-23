@@ -51,8 +51,11 @@ ALLIANCE_COLOR = AllianceColor.RED
 # AUTON_SEQUENCE = AutonSequence.MATCH_NONE
 AUTON_SEQUENCE = CALIBRATION
 
-AUTON_START_Y = 0
-AUTON_START_X = 0
+ROBOT_WIDTH = 192 * 2 # (mm)
+ROBOT_LENGTH = 183 * 2 # (mm) 185 measured from back wall to center line
+
+AUTON_START_Y = 1800
+AUTON_START_X = ROBOT_LENGTH / 2
 
 # ------------------------------------------------------------ #
 ### DECLARE DEVICES
@@ -239,9 +242,6 @@ back_distance1 = DistanceWrapper(Ports.PORT4) # left side
 back_distance2_close_error = DistanceWrapper.ErrorMode_Offset_Descriptor(BACK_DISTANCE2_CLOSE_ERROR)
 back_distance2 = DistanceWrapper(Ports.PORT9, close_error_descriptor=back_distance2_close_error) # right side
 
-ROBOT_WIDTH = 192 * 2 # (mm)
-ROBOT_LENGTH = 183 * 2 # (mm) 185 measured from back wall to center line
-
 LEFT_DISTANCE_FROM_LEFT = 5 # mm
 LEFT_DISTANCE_CLOSE_ERROR = -15 # mm (at 145mm reads 130mm, at 200mm reads 185mm, at 250mm reads 250mm, at 295mm reads 295mm)
 LEFT_DISTANCE_FAR_ERROR = 0 # mm roughly at 250mm
@@ -257,12 +257,12 @@ RIGHT_DISTANCE_FAR_TRANSITION = 1600 # mm
 right_distance_far_error = DistanceWrapper.ErrorMode_Linear_Descriptor(RIGHT_DISTANCE_CLOSE_TRANSITION, RIGHT_DISTANCE_CLOSE_ERROR, RIGHT_DISTANCE_FAR_TRANSITION, RIGHT_DISTANCE_FAR_ERROR)
 right_distance = DistanceWrapper(Ports.PORT8, far_error_descriptor=right_distance_far_error, transition_distance=RIGHT_DISTANCE_CLOSE_TRANSITION, max_value=1700)
 
-ROTATION_SIDE_WHEEL_SIZE = 157 # 2 * 25.4 * pi # mm circumference
-ROTATION_SIDE_WHEEL_OFFSET = 60 # 61.0 # mm (forward)
+ROTATION_SIDE_WHEEL_SIZE = 156 # 2 * 25.4 * pi # mm circumference
+ROTATION_SIDE_WHEEL_OFFSET = 58.2 # 57.5 for reverse direction # 61.0 # mm (forward)
 rotation_side = Rotation(Ports.PORT18, True)
 
 ROTATION_FWD_WHEEL_SIZE = 157 # 2 * 25.4 * pi # mm circumference
-ROTATION_FWD_WHEEL_OFFSET = 25 # 23.0 # mm (right)
+ROTATION_FWD_WHEEL_OFFSET = 20.9 # 19.85 for reverse direction # 23.0 # mm (right)
 rotation_fwd = Rotation(Ports.PORT20, False)
 
 claw_solenoid = DigitalOut(brain.three_wire_port.a)
@@ -774,7 +774,7 @@ class XOdometry():
     DistanceError_NotEnabled = -9
 
     def __init__(self):
-        self.X = 0
+        self.X = 0 if (AUTON_SEQUENCE == CALIBRATION) else AUTON_START_X
         self.Pxx = 1.0
         self.Y = 0 if (AUTON_SEQUENCE == CALIBRATION) else AUTON_START_Y
         self.Pyy = 1.0
@@ -1514,7 +1514,7 @@ def OnLoggerPositionCallbackCalibration():
     return dt.last_fwd_command, dt.last_strafe_command, dt.last_turn_command, odom.Y, odom.X, inertial.acceleration(XAXIS), TEST_PHASE
 
 
-def distancesensor_delay():
+def calibration_distancesensor_delay():
     odom.odom_distance_enable(False, False, False)
     wait(100, MSEC)
     dt.turn_for(30, 50)
@@ -1522,28 +1522,9 @@ def distancesensor_delay():
     dt.turn_for(60, 50)
     dt.turn_for(-30, 50)
     wait(100, MSEC)
-    return    
+    return
 
-def autonomous_calibration():
-    global TEST_PHASE
-
-    print("--- Starting autonomous calibration ---")
-
-    log = Logger(brain,
-        [left_front_motor, left_back_motor, right_front_motor, right_back_motor, inertial, rotation_fwd, rotation_side, right_distance],
-        ["lfm", "lbm", "rfm", "rbm", "gyro", "fwd", "side", "right"], False,
-        ["fwd", "strafe", "turn", "y", "x", "accel_x", "phase"], OnLoggerPositionCallbackCalibration,
-        time_sec = 45, rate_ms = 5, max_length = 30 * 100,
-        auto_dump = True, file_name = "calibration"
-        )
-    log.start()
-    wait(100, MSEC)
-
-    # Thread(odom_thread)
-    # Thread(log_drivetrain)
-    # Thread(log_odom)
-    # place automonous code here
-
+def calibration_drives():
     odom.odom_distance_enable(False, False, False)
     for i in range(10):
         TEST_PHASE = i * 2 + 1
@@ -1562,6 +1543,44 @@ def autonomous_calibration():
 
     while True:
         wait(100, MSEC)
+
+def calibration_rotation_sensors():
+    # -3014.12 8436.541 3599.146
+    # 155.04 93.78 -0.246262
+    odom.odom_distance_enable(False, False, False)
+    wait(100, MSEC)
+    print("{} {} {}".format(rotation_fwd.position(DEGREES), rotation_side.position(DEGREES), inertial.rotation()))
+    dt.turn_for(360*10, 50, timeout = 20000)
+    wait(100, MSEC)
+    print("{} {} {}".format(rotation_fwd.position(DEGREES), rotation_side.position(DEGREES), inertial.rotation()))
+    dt.turn_for(-360*10, 50, timeout = 20000)
+    wait(100, MSEC)
+    print("{} {} {}".format(rotation_fwd.position(DEGREES), rotation_side.position(DEGREES), inertial.rotation()))
+    return
+
+def autonomous_calibration():
+    global TEST_PHASE
+
+    print("--- Starting autonomous calibration ---")
+
+    calibration_rotation_sensors()
+
+    if False:
+        log = Logger(brain,
+            [left_front_motor, left_back_motor, right_front_motor, right_back_motor, inertial, rotation_fwd, rotation_side, right_distance],
+            ["lfm", "lbm", "rfm", "rbm", "gyro", "fwd", "side", "right"], False,
+            ["fwd", "strafe", "turn", "y", "x", "accel_x", "phase"], OnLoggerPositionCallbackCalibration,
+            time_sec = 45, rate_ms = 5, max_length = 30 * 100,
+            auto_dump = True, file_name = "calibration"
+            )
+        log.start()
+        wait(100, MSEC)
+
+    # Thread(odom_thread)
+    # Thread(log_drivetrain)
+    # Thread(log_odom)
+    # place automonous code here
+
 
     # odom_distance_enable(True, False, True)
 
@@ -1907,12 +1926,17 @@ def claw_move1():
     lift.command(5.5)
 
 def claw_move10():
+    pin_detected = claw_distance.is_object_detected()
     pin_distance = claw_distance.object_distance(MM)
-    print("Pin distance: {}".format(pin_distance))
-    pin_compensation = (pin_distance - 40) / 1.5
-    angle = int(Arm.CLAW_ARM_MID1_DEGREES + pin_compensation)
-    print("Pin compensation: {}".format(pin_compensation))
-    arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_ANGLE, angle)
+    if claw_distance.is_object_detected() and pin_distance < 100:
+        pin_distance = claw_distance.object_distance(MM)
+        print("Pin distance: {}".format(pin_distance))
+        pin_compensation = (pin_distance - 40) / 1.5
+        angle = int(Arm.CLAW_ARM_MID1_DEGREES + pin_compensation)
+        print("Pin compensation: {}".format(pin_compensation))
+        arm.run_claw_arm(Arm.CLAW_ARM_COMMAND_TO_ANGLE, angle)
+    else:
+        print("No object detected")
     lift.command(3)    
 
 def claw_move2():
