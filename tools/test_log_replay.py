@@ -1,5 +1,6 @@
 import csv
 import math
+from itertools import product
 from pathlib import Path
 import tempfile
 import tkinter as tk
@@ -194,7 +195,8 @@ class FieldZoomTests(unittest.TestCase):
         base = Path(__file__).resolve().parents[1] / "log"
         log = LogData(base / "log_new_format.csv")
         field.set_log(log)
-        field.show_diagnostics = True
+        field.show_tracking = True
+        field.show_motor = True
         field.zoom_at(4, 200, 200)
         field.update_robot(100)
         self.assertPointAlmostEqual(field.coords("trail")[-2:],
@@ -205,6 +207,26 @@ class FieldZoomTests(unittest.TestCase):
         field.set_log(LogData(base / "ai_310mm.csv"))
         field.update_robot(10)
         self.assertEqual(field._diagnostic_px, {})
+
+    def test_path_visibility_is_independent_and_survives_redraw(self):
+        field = self.field
+        log = LogData(Path(__file__).resolve().parents[1] / "log" / "log_new_format.csv")
+        field.set_log(log)
+        for odometry, tracking, motor in product((False, True), repeat=3):
+            with self.subTest(odometry=odometry, tracking=tracking, motor=motor):
+                field.show_trail = odometry
+                field.show_tracking = tracking
+                field.show_motor = motor
+                field.update_robot(100)
+                field.zoom_at(1.2)
+                for tag, visible in (("fullpath", odometry), ("trail", odometry),
+                                     ("path_track", tracking), ("path_motor", motor)):
+                    self.assertEqual(field.itemcget(tag, "state"), "normal" if visible else "hidden")
+                # Each enabled reconstructed path has one current-position marker.
+                markers = [item for item in field.find_withtag("robot")
+                           if field.type(item) == "oval"
+                           and field.itemcget(item, "fill") in ("#00897b", "#ad1457")]
+                self.assertEqual(len(markers), int(tracking) + int(motor))
 
 
 if __name__ == "__main__":

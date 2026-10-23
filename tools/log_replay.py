@@ -375,7 +375,8 @@ class FieldView(tk.Canvas):
         self.index = 0
         self.show_trail = True
         self.show_rays = True
-        self.show_diagnostics = False
+        self.show_tracking = False
+        self.show_motor = False
         self._diagnostic_px = {}
         self._trail_px = []
         self.zoom = 1.0
@@ -503,9 +504,10 @@ class FieldView(tk.Canvas):
         self.index = i
         self.delete("robot")
         log = self.log
-        self.itemconfigure("diagnostic", state="normal" if self.show_diagnostics and i > 0 else "hidden")
-        if self.show_diagnostics and i > 0:
-            for name, points in self._diagnostic_px.items():
+        for name, points in self._diagnostic_px.items():
+            visible = self.show_tracking if name == "track" else self.show_motor
+            self.itemconfigure("path_" + name, state="normal" if visible and i > 0 else "hidden")
+            if visible and i > 0:
                 self.coords("path_" + name, *points[:2 * (i + 1)])
                 px, py = points[2 * i:2 * i + 2]
                 self.create_oval(px - 4, py - 4, px + 4, py + 4,
@@ -780,9 +782,13 @@ class App(tk.Tk):
         diagnostics.add_command(label="Distance timing layout", command=self._distance_layout)
         diagnostics.add_command(label="Replay layout", command=lambda: self._chart_layout(DEFAULT_CHARTS))
         diagnostics.add_separator()
-        self.diagnostics_var = tk.BooleanVar(value=False)
-        diagnostics.add_checkbutton(label="Show tracking / motor paths", variable=self.diagnostics_var,
-                                    command=self._apply_view_opts)
+        self.trail_var = tk.BooleanVar(value=True)
+        self.tracking_var = tk.BooleanVar(value=False)
+        self.motor_var = tk.BooleanVar(value=False)
+        for label, variable in (("Show odometry path", self.trail_var),
+                                ("Show tracking-only path", self.tracking_var),
+                                ("Show motor-only path", self.motor_var)):
+            diagnostics.add_checkbutton(label=label, variable=variable, command=self._apply_view_opts)
         diagnostics.add_command(label="Model assumptions / limitations", command=self._diagnostic_help)
         m.add_cascade(label="Diagnostics", menu=diagnostics)
         hm = tk.Menu(m, tearoff=0)
@@ -798,7 +804,8 @@ class App(tk.Tk):
     def _tracking_layout(self):
         self._chart_layout(["Forward comparison (mm/s)", "Lateral comparison (mm/s)",
                             "Tracking - motors (mm/s)", "Trajectory separation (mm)"])
-        self.diagnostics_var.set(True)
+        self.tracking_var.set(True)
+        self.motor_var.set(True)
         self._apply_view_opts()
 
     def _distance_layout(self):
@@ -845,8 +852,7 @@ class App(tk.Tk):
                           state="readonly", takefocus=0)
         cw.pack(side="left", padx=2)
         cw.bind("<<ComboboxSelected>>", lambda e: self._apply_chart_window())
-        self.trail_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(bar, text="Path", variable=self.trail_var, command=self._apply_view_opts,
+        ttk.Checkbutton(bar, text="Odometry path", variable=self.trail_var, command=self._apply_view_opts,
                         takefocus=0).pack(side="left", padx=6)
         self.rays_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(bar, text="Sensor rays", variable=self.rays_var, command=self._apply_view_opts,
@@ -1160,7 +1166,8 @@ class App(tk.Tk):
     def _apply_view_opts(self):
         self.field.show_trail = self.trail_var.get()
         self.field.show_rays = self.rays_var.get()
-        self.field.show_diagnostics = self.diagnostics_var.get()
+        self.field.show_tracking = self.tracking_var.get()
+        self.field.show_motor = self.motor_var.get()
         self.field.update_robot(self.index)
 
     # ---- playback ----

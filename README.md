@@ -44,7 +44,12 @@ Use **Diagnostics > Tracking comparison layout** for:
 
 - **Teal tracking-only / magenta motor-only paths**, using the logged gyro and
   initial X/Y, without distance corrections. Blue remains the logged fused pose.
-  The path overlays can be toggled separately in the Diagnostics menu.
+  **Show odometry path**, **Show tracking-only path**, and **Show motor-only path**
+  are independent toggles in the Diagnostics menu. The toolbar's **Odometry path**
+  checkbox controls the same odometry setting. Hiding a reconstructed path also
+  hides its position marker; the robot and sensor rays remain visible.
+  Selecting Tracking comparison layout enables both reconstructed paths without
+  changing the odometry toggle.
 - Rotation-compensated forward/right tracking velocity versus X-drive encoder
   velocity, trailing approximately 200 ms; tracking-minus-motor residuals and
   accumulated path separation. Differences indicate disagreement, not which
